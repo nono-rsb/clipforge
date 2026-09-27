@@ -26,7 +26,6 @@ Ouvrez ensuite http://localhost:5173 dans Chrome ou Edge.
 | Recadrage | Mode auto ou manuel, zoom (le visage est placé dans le tiers supérieur), mode « ajusté + fond flou » |
 | Sous-titres IA | Whisper (tiny / base / small) dans le navigateur, 5 styles animés mot à mot, texte modifiable |
 | Emojis automatiques | Environ 50 thèmes (argent 💰, peur 😱, gagner 🏆, secret 🤫…) en français et en anglais, affichés en grand au-dessus des sous-titres. Tu peux aussi taper tes propres emojis dans le texte |
-| Import par lien | Colle un lien YouTube (ou TikTok, Twitch, X…) : le serveur local le télécharge avec yt-dlp, jusqu'en 1080p avec ffmpeg. Les deux outils s'installent en un clic dans `bin/`. Les vidéos téléchargées vont dans `downloads/` et sont effacées après 24 h |
 | Titre d'accroche | Bandeau affiché pendant les 3 premières secondes |
 | Éditeur | Découpe ±30 s avec forme d'onde, légende et hashtags suggérés, « appliquer à tous » |
 | Export | MP4 (ou WebM selon le navigateur) en 1080p ou 720p, un clip ou tous d'un coup |
@@ -37,9 +36,9 @@ Ouvrez ensuite http://localhost:5173 dans Chrome ou Edge.
 - Le modèle « base » offre un bon compromis. Le modèle « small » est plus précis mais plus lent. La transcription utilise la carte graphique (WebGPU) si elle est disponible.
 - Pour les vidéos de plus d'une heure, prévoyez assez de mémoire vive, car l'audio est décodé entièrement.
 
-## Partager l'app ou la mettre sur GitHub
+## Mettre en ligne
 
-N'envoie pas les dossiers `bin/` et `downloads/` (le fichier `.gitignore` s'en charge). `bin/` contient ffmpeg (159 Mo), trop lourd pour GitHub. ClipForge le réinstalle tout seul au premier import YouTube.
+L'app est entièrement statique : elle marche telle quelle sur Cloudflare Pages, GitHub Pages ou Netlify. Le fichier `_headers` y active la transcription multi-thread. `server.js` ne sert qu'à l'utiliser en local.
 
 ## Structure
 

@@ -1,7 +1,5 @@
-# Outils téléchargés automatiquement au premier import YouTube (trop lourds pour être partagés)
+# Restes de l'ancien import YouTube (outils et vidéos téléchargées)
 bin/
-
-# Vidéos téléchargées temporairement
 downloads/
 
 # Réglages locaux de Claude

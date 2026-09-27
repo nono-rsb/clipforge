@@ -63,20 +63,6 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 28px 60px; }
 .dz-name { font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dz-info { color: var(--muted); font-size: 13px; }
 
-.left-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.left-col .dropzone { flex: 1; }
-.yt-bar { display: flex; align-items: center; gap: 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; padding: 7px 7px 7px 12px; transition: .15s; }
-.yt-bar:focus-within { border-color: var(--accent); }
-.yt-bar.offline { opacity: .6; }
-.yt-icon { width: 30px; height: 22px; border-radius: 6px; background: #ff0033; display: grid; place-items: center; font-size: 11px; flex: none; }
-.yt-bar input { flex: 1; min-width: 0; background: none; border: none; outline: none; padding: 6px 0; }
-.yt-status { background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; font-size: 13.5px; }
-.yt-status.err { border-color: var(--bad); }
-.yt-line { display: flex; justify-content: space-between; gap: 10px; }
-.yt-line span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.yt-actions { display: flex; gap: 8px; margin-top: 10px; }
-.yt-actions:not(:has(button:not(.hidden))) { display: none; }
-
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 22px; }
 .settings h3 { margin: 0 0 16px; font-size: 16px; }
 .field { margin-bottom: 18px; }
