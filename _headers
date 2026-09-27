@@ -1,0 +1,5 @@
+# En-têtes Cloudflare Pages : équivalent de ce que fait server.js en local.
+# Ils activent le multi-thread WebAssembly, ce qui rend la transcription Whisper plus rapide.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless

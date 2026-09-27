@@ -138,12 +138,30 @@ function stream(url, onMsg) {
   });
 }
 
+// null si le serveur local n'est pas là (ex. version hébergée sur Cloudflare Pages,
+// qui renvoie une page HTML ou une 404 à la place de l'API).
+async function serverStatus() {
+  try {
+    const r = await fetch('/api/yt/status', { cache: 'no-store' });
+    if (!r.ok || !(r.headers.get('content-type') || '').includes('json')) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+const OFFLINE_MSG = 'L\'import par lien ne marche que dans la version installée sur ton PC (« Lancer ClipForge.bat ») : '
+  + 'un site en ligne ne peut pas télécharger depuis YouTube. Ici, télécharge d\'abord la vidéo, puis glisse-la dans le cadre ci-dessous.';
+
+serverStatus().then(st => {
+  if (st) return;
+  $('#ytForm').classList.add('offline');
+  $('#ytUrl').placeholder = 'Import YouTube : disponible dans la version PC';
+});
+
 async function importLink() {
   const url = $('#ytUrl').value.trim();
+  const st = await serverStatus();
+  if (!st) { ytShow(OFFLINE_MSG, { err: true }); return; }
   if (!/^https?:\/\/\S+$/i.test(url)) { ytShow('Colle un lien complet qui commence par https://', { err: true }); return; }
-  let st;
-  try { st = await (await fetch('/api/yt/status')).json(); }
-  catch { ytShow('Serveur ClipForge injoignable : lance l\'app avec « Lancer ClipForge.bat ».', { err: true }); return; }
   // Première utilisation : on installe directement ce qui manque, puis on enchaîne sur le téléchargement.
   if (!st.ytdlp || (!st.ffmpeg && st.canInstallFfmpeg)) {
     if (!(await installTools())) return;
