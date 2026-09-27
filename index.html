@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClipForge — Clips viraux automatiques</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <script>
+    // Empêche le navigateur d'ouvrir la vidéo à la place de l'app si on la lâche à côté de la zone.
+    addEventListener('dragover', e => e.preventDefault());
+    addEventListener('drop', e => e.preventDefault());
+    // Ouvert en double-cliquant sur index.html : l'app ne peut pas fonctionner, on l'explique.
+    if (location.protocol === 'file:') {
+      addEventListener('DOMContentLoaded', () => {
+        document.body.insertAdjacentHTML('afterbegin',
+          '<div class="file-warn"><b>⚠ ClipForge ne peut pas fonctionner ouvert comme un simple fichier.</b>' +
+          'Ferme cet onglet et double-clique sur <u>Lancer ClipForge.bat</u> dans le dossier de l\'app, ' +
+          'ou si elle est déjà lancée : <a href="http://localhost:5173">ouvrir http://localhost:5173</a></div>');
+      });
+    }
+  </script>
+  <header class="topbar">
+    <div class="logo"><span class="logo-mark">✂</span><span>Clip<b>Forge</b></span></div>
+    <div class="top-actions">
+      <span class="pill-soft">100 % local · aucune vidéo envoyée</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- ÉTAPE 1 : IMPORT -->
+    <section id="screen-upload" class="screen active">
+      <div class="hero">
+        <h1>Une vidéo longue.<br><span class="grad">Dix clips viraux.</span></h1>
+        <p class="sub">L'IA repère les meilleurs moments, recadre en vertical, ajoute des sous-titres animés et note chaque clip.</p>
+      </div>
+
+      <div class="upload-grid">
+        <div class="left-col">
+        <form id="ytForm" class="yt-bar">
+          <span class="yt-icon">▶</span>
+          <input id="ytUrl" type="url" placeholder="Colle un lien YouTube (ou TikTok, Twitch, X…)" autocomplete="off" spellcheck="false">
+          <button id="ytGo" class="btn primary sm" type="submit">Importer</button>
+        </form>
+        <div id="ytStatus" class="yt-status hidden">
+          <div class="yt-line"><span id="ytText"></span><span id="ytPct" class="mono"></span></div>
+          <div class="bar"><i id="ytBar"></i></div>
+          <div class="yt-actions">
+            <button id="ytInstall" type="button" class="btn ghost sm hidden">Réessayer l'installation</button>
+            <button id="ytCancel" type="button" class="btn ghost sm hidden">Annuler</button>
+          </div>
+        </div>
+        <label id="dropzone" class="dropzone">
+          <input id="fileInput" type="file" accept="video/*" hidden>
+          <div class="dz-empty">
+            <div class="dz-icon">⬆</div>
+            <div class="dz-title">Glissez votre vidéo ici</div>
+            <div class="dz-sub">ou <u>parcourez vos fichiers</u> — MP4, MOV, WebM, MKV</div>
+          </div>
+          <div class="dz-file hidden">
+            <video id="dzPreview" muted playsinline></video>
+            <div class="dz-meta">
+              <div id="dzName" class="dz-name"></div>
+              <div id="dzInfo" class="dz-info"></div>
+              <button type="button" id="dzChange" class="btn ghost sm">Changer de vidéo</button>
+            </div>
+          </div>
+        </label>
+        </div>
+
+        <div class="panel settings">
+          <h3>Paramètres</h3>
+
+          <div class="field">
+            <div class="label">Durée des clips</div>
+            <div class="chips" data-setting="length">
+              <button data-v="10-30">&lt; 30 s</button>
+              <button data-v="30-60" class="on">30 – 60 s</button>
+              <button data-v="60-90">60 – 90 s</button>
+              <button data-v="15-60">Auto</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="label">Nombre de clips <b id="countVal">6</b></div>
+            <input type="range" id="count" min="1" max="20" value="6">
+          </div>
+
+          <div class="field">
+            <div class="label">Format</div>
+            <div class="chips" data-setting="aspect">
+              <button data-v="9:16" class="on">9:16 <small>TikTok · Reels · Shorts</small></button>
+              <button data-v="1:1">1:1</button>
+              <button data-v="4:5">4:5</button>
+              <button data-v="16:9">16:9</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="switch-row">
+              <span><span class="label">Suivi des visages</span><small>Le cadrage vertical suit la personne qui parle</small></span>
+              <input type="checkbox" id="faces" checked><span class="switch"></span>
+            </label>
+            <div class="label">Mode podcast <small class="muted">quand 2 personnes sont dans le plan</small></div>
+            <div class="chips" data-setting="podcast">
+              <button data-v="speaker" class="on">🎙️ Orateur actif</button>
+              <button data-v="split">⬒ Écran partagé</button>
+              <button data-v="off">Désactivé</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="switch-row">
+              <span><span class="label">Sous-titres IA</span><small>Transcription Whisper dans votre navigateur</small></span>
+              <input type="checkbox" id="transcribe" checked><span class="switch"></span>
+            </label>
+            <div class="row2" id="asrOpts">
+              <select id="lang">
+                <option value="fr" selected>Français</option>
+                <option value="en">Anglais</option>
+                <option value="es">Espagnol</option>
+                <option value="de">Allemand</option>
+                <option value="it">Italien</option>
+                <option value="pt">Portugais</option>
+                <option value="ar">Arabe</option>
+                <option value="auto">Détection auto</option>
+              </select>
+              <select id="model">
+                <option value="onnx-community/whisper-tiny">Rapide (tiny)</option>
+                <option value="onnx-community/whisper-base" selected>Équilibré (base)</option>
+                <option value="onnx-community/whisper-small">Précis (small)</option>
+              </select>
+            </div>
+          </div>
+
+          <button id="generate" class="btn primary lg" disabled>✨ Générer les clips</button>
+        </div>
+      </div>
+
+      <div class="features">
+        <div><b>🧠 Détection des temps forts</b><span>Énergie de la voix, rythme, accroches, mots-clés</span></div>
+        <div><b>📈 Score de viralité</b><span>Chaque clip noté sur 99 avec ses points forts</span></div>
+        <div><b>👤 Suivi des visages</b><span>Le 9:16 reste centré sur la personne qui parle</span></div>
+        <div><b>💬 Sous-titres animés</b><span>Karaoké mot à mot, 5 styles</span></div>
+      </div>
+    </section>
+
+    <!-- ÉTAPE 2 : ANALYSE -->
+    <section id="screen-processing" class="screen">
+      <div class="proc">
+        <div class="proc-head">
+          <div class="spinner"></div>
+          <div>
+            <h2>Analyse en cours…</h2>
+            <p class="muted" id="procFile"></p>
+          </div>
+        </div>
+        <ol class="steps">
+          <li data-step="audio"><span class="st-icon"></span><div><b>Extraction de l'audio</b><small></small><div class="bar"><i></i></div></div></li>
+          <li data-step="visual"><span class="st-icon"></span><div><b>Analyse des images et des visages</b><small></small><div class="bar"><i></i></div></div></li>
+          <li data-step="asr"><span class="st-icon"></span><div><b>Transcription IA (Whisper)</b><small></small><div class="bar"><i></i></div></div></li>
+          <li data-step="detect"><span class="st-icon"></span><div><b>Détection des moments viraux</b><small></small><div class="bar"><i></i></div></div></li>
+          <li data-step="faces"><span class="st-icon"></span><div><b>Suivi des visages sur les clips</b><small></small><div class="bar"><i></i></div></div></li>
+        </ol>
+        <p class="hint">Gardez cet onglet ouvert. La première transcription télécharge le modèle IA (une seule fois).</p>
+      </div>
+    </section>
+
+    <!-- ÉTAPE 3 : RÉSULTATS -->
+    <section id="screen-results" class="screen">
+      <div class="results-head">
+        <div>
+          <h2><span id="resCount"></span> clips générés</h2>
+          <p class="muted" id="resSource"></p>
+        </div>
+        <div class="results-actions">
+          <select id="sortBy">
+            <option value="score">Trier : score</option>
+            <option value="time">Trier : chronologique</option>
+          </select>
+          <button id="newVideo" class="btn ghost">Nouvelle vidéo</button>
+          <button id="exportAll" class="btn primary">⬇ Tout exporter</button>
+        </div>
+      </div>
+      <div id="clipGrid" class="clip-grid"></div>
+    </section>
+  </main>
+
+  <!-- ÉDITEUR -->
+  <div id="editor" class="editor hidden">
+    <div class="ed-top">
+      <button id="edClose" class="btn ghost sm">← Retour</button>
+      <input id="edTitle" class="ed-title" spellcheck="false">
+      <div class="ed-score" id="edScore"></div>
+      <button id="edExport" class="btn primary">⬇ Exporter</button>
+    </div>
+    <div class="ed-body">
+      <div class="ed-stage">
+        <div class="stage-wrap" id="stageWrap"><canvas id="preview"></canvas></div>
+        <div class="player">
+          <button id="playBtn" class="round">▶</button>
+          <span id="tCur" class="mono">0:00</span>
+          <input type="range" id="scrub" min="0" max="1" step="0.01" value="0">
+          <span id="tDur" class="mono">0:00</span>
+          <button id="muteBtn" class="round sm" title="Son">🔊</button>
+        </div>
+      </div>
+
+      <div class="ed-side">
+        <div class="tabs">
+          <button data-tab="trim" class="on">Découpe</button>
+          <button data-tab="frame">Cadrage</button>
+          <button data-tab="subs">Sous-titres</button>
+          <button data-tab="hook">Accroche</button>
+        </div>
+
+        <div class="tab-pane on" data-pane="trim">
+          <canvas id="wave" class="wave"></canvas>
+          <div class="field">
+            <div class="label">Début <b id="startVal" class="mono"></b></div>
+            <div class="nudge"><button data-nudge="start:-1">−1s</button><input type="range" id="trimStart" step="0.1"><button data-nudge="start:1">+1s</button></div>
+          </div>
+          <div class="field">
+            <div class="label">Fin <b id="endVal" class="mono"></b></div>
+            <div class="nudge"><button data-nudge="end:-1">−1s</button><input type="range" id="trimEnd" step="0.1"><button data-nudge="end:1">+1s</button></div>
+          </div>
+          <div class="kv"><span>Durée du clip</span><b id="lenVal" class="mono"></b></div>
+          <div class="field">
+            <div class="label">Pourquoi ce clip</div>
+            <div id="edReasons" class="reasons"></div>
+          </div>
+          <div class="field">
+            <div class="label">Légende suggérée</div>
+            <div class="caption-box" id="edCaption"></div>
+            <button class="btn ghost sm" id="copyCaption">Copier la légende</button>
+          </div>
+        </div>
+
+        <div class="tab-pane" data-pane="frame">
+          <div class="field">
+            <div class="label">Format</div>
+            <div class="chips" data-opt="aspect">
+              <button data-v="9:16">9:16</button><button data-v="1:1">1:1</button><button data-v="4:5">4:5</button><button data-v="16:9">16:9</button>
+            </div>
+          </div>
+          <div class="field">
+            <div class="label">Mise en page</div>
+            <div class="chips" data-opt="layout">
+              <button data-v="fill">Remplir (recadré)</button><button data-v="fit">Ajusté + fond flou</button>
+            </div>
+          </div>
+          <div class="field">
+            <div class="label">Recadrage</div>
+            <div class="chips" data-opt="reframe">
+              <button data-v="auto">👤 Auto (suit le visage)</button><button data-v="manual">Manuel</button>
+            </div>
+          </div>
+          <div class="field">
+            <div class="label">Mode podcast</div>
+            <div class="chips" data-opt="podcast">
+              <button data-v="off">Un visage</button><button data-v="speaker">🎙️ Orateur actif</button><button data-v="split">⬒ Écran partagé</button>
+            </div>
+            <small class="muted" id="podcastHint"></small>
+          </div>
+          <div class="field" id="cropXField">
+            <div class="label">Position horizontale</div>
+            <input type="range" id="cropX" min="0" max="1" step="0.01">
+          </div>
+          <div class="field">
+            <div class="label">Zoom <b id="zoomVal"></b></div>
+            <input type="range" id="zoom" min="1" max="2.5" step="0.05">
+          </div>
+          <label class="switch-row">
+            <span class="label">Barre de progression</span>
+            <input type="checkbox" data-bool="progress"><span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="tab-pane" data-pane="subs">
+          <label class="switch-row">
+            <span class="label">Afficher les sous-titres</span>
+            <input type="checkbox" data-bool="captions"><span class="switch"></span>
+          </label>
+          <div class="field">
+            <div class="label">Style</div>
+            <div class="style-grid" id="styleGrid"></div>
+          </div>
+          <div class="field">
+            <div class="label">Taille</div>
+            <input type="range" id="capSize" min="0.6" max="1.6" step="0.05">
+          </div>
+          <div class="field">
+            <div class="label">Position verticale</div>
+            <input type="range" id="capPos" min="0.15" max="0.9" step="0.01">
+          </div>
+          <label class="switch-row">
+            <span class="label">MAJUSCULES</span>
+            <input type="checkbox" data-bool="uppercase"><span class="switch"></span>
+          </label>
+          <label class="switch-row">
+            <span><span class="label">Emojis automatiques 🔥</span><small>Ajoutés selon les mots-clés. Tu peux aussi en taper dans le texte.</small></span>
+            <input type="checkbox" data-bool="emojis"><span class="switch"></span>
+          </label>
+          <div class="field">
+            <div class="label">Texte (corrigez les erreurs de transcription)</div>
+            <textarea id="edText" rows="7" spellcheck="true" placeholder="Aucune transcription — activez « Sous-titres IA » à l'import, ou tapez le texte ici."></textarea>
+          </div>
+          <button class="btn ghost sm" id="applyAll">Appliquer ce style à tous les clips</button>
+        </div>
+
+        <div class="tab-pane" data-pane="hook">
+          <label class="switch-row">
+            <span><span class="label">Titre d'accroche</span><small>Affiché pendant les 3 premières secondes</small></span>
+            <input type="checkbox" data-bool="hook"><span class="switch"></span>
+          </label>
+          <div class="field">
+            <div class="label">Texte de l'accroche</div>
+            <textarea id="hookText" rows="3" placeholder="Laissez vide pour utiliser le titre du clip"></textarea>
+          </div>
+          <div class="field">
+            <div class="label">Qualité d'export</div>
+            <div class="chips" data-setting="quality">
+              <button data-v="1080" class="on">1080p</button><button data-v="720">720p</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+  <video id="srcVideo" class="offscreen-video" playsinline preload="auto"></video>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
