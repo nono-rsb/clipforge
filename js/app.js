@@ -282,7 +282,11 @@ async function generate() {
       try {
         const segments = await transcribe(pcm, S.model, S.lang);
         state.words = buildWords(segments);
-        setStep('asr', 'done', 1, `${state.words.length} mots transcrits`);
+        if (state.words.length) setStep('asr', 'done', 1, `${state.words.length} mots transcrits`);
+        else {
+          setStep('asr', 'skip', 1, 'Aucune parole reconnue — vérifie la langue choisie');
+          toast('Aucune parole reconnue, donc pas de sous-titres. Vérifie la langue (ou choisis « Détection auto ») et relance.', 'err', 9000);
+        }
       } catch (e) {
         console.error(e);
         setStep('asr', 'skip', 1, `Transcription indisponible : ${e.message}`);

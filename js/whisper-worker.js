@@ -28,6 +28,9 @@ async function transcribeChunk(slice, language) {
   return asr(slice, opts);
 }
 
+// Sur certaines cartes graphiques, Whisper en WebGPU ne renvoie rien (ou « !!!!! ») sans erreur.
+const looksBroken = out => (out?.text || '').replace(/[^\p{L}]/gu, '').length < 2;
+
 self.onmessage = async e => {
   const msg = e.data;
   try {
@@ -43,6 +46,9 @@ self.onmessage = async e => {
       const { audio, language } = msg;
       const SR = 16000, CH = 30 * SR;
       const total = audio.length / SR;
+      // Passages sonores sans texte sur le GPU : un seul peut être de la musique,
+      // deux d'affilée veulent dire que le GPU dérape, on reprend au premier sur le processeur.
+      let gpuEmpty = 0, firstEmpty = 0;
       for (let off = 0; off < audio.length; off += CH) {
         const slice = audio.subarray(off, Math.min(audio.length, off + CH));
         const t0 = off / SR, len = slice.length / SR;
@@ -58,6 +64,15 @@ self.onmessage = async e => {
             post({ type: 'ready', device: 'wasm' });
             out = await transcribeChunk(slice, language);
           }
+          if (device === 'webgpu' && rms > 0.02 && looksBroken(out)) {
+            if (gpuEmpty++ === 0) firstEmpty = off;
+            if (gpuEmpty >= 2) {
+              await load(modelId, 'wasm');
+              post({ type: 'ready', device: 'wasm' });
+              off = firstEmpty - CH; // la boucle rajoute CH
+              continue;
+            }
+          } else gpuEmpty = 0;
           const chunks = out.chunks?.length ? out.chunks : [{ text: out.text, timestamp: [0, len] }];
           const segments = chunks
             .map(c => ({
