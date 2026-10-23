@@ -6,13 +6,11 @@ Tout tourne **dans votre navigateur**, et aucune vidéo n'est envoyée sur Inter
 
 ## Lancer
 
-Double-cliquez sur **`Lancer ClipForge.bat`** (Node.js est requis), ou lancez :
+**Le plus simple :** téléchargez `ClipForge.exe` dans les [Releases](https://github.com/nono-rsb/clipforge/releases/latest) et double-cliquez dessus. Rien à installer : ClipForge s'ouvre dans votre navigateur (Chrome ou Edge). L'exe n'est pas signé, donc Windows peut afficher « Windows a protégé votre ordinateur » : cliquez sur « Informations complémentaires », puis « Exécuter quand même ».
 
-```
-node server.js
-```
+Avec Node.js : double-cliquez sur **`Lancer ClipForge.bat`**, ou lancez `node server.js`, puis ouvrez http://localhost:5173.
 
-Ouvrez ensuite http://localhost:5173 dans Chrome ou Edge.
+L'import par lien (YouTube…) marche avec l'exe et avec Node.js, mais pas sur la version en ligne. Au premier import, yt-dlp et ffmpeg s'installent tout seuls (avec l'exe, dans `%LOCALAPPDATA%\ClipForge`).
 
 ## Fonctions
 
@@ -49,3 +47,4 @@ N'envoie pas les dossiers `bin/` et `downloads/` (le fichier `.gitignore` s'en c
 - `js/faces.js` : détection des visages (MediaPipe BlazeFace, image découpée en carrés)
 - `js/whisper-worker.js` : transcription Whisper (Transformers.js)
 - `js/app.js` : interface
+- `build/build-exe.js` : fabrique `ClipForge.exe` (Node SEA). GitHub le fait tout seul à chaque tag `v*` (`.github/workflows/exe.yml`)

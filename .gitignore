@@ -4,5 +4,8 @@ bin/
 # Vidéos téléchargées temporairement
 downloads/
 
+# Exe fabriqué par build/build-exe.js
+dist/
+
 # Réglages locaux de Claude
 .claude/

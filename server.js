@@ -1,6 +1,8 @@
 // Mini serveur local pour ClipForge (aucune dépendance).
 // - Sert l'application. Les en-têtes COOP/COEP activent le multi-thread WebAssembly, d'où une transcription plus rapide.
 // - Importe des vidéos depuis un lien (YouTube…) grâce à yt-dlp, installé à la demande dans ./bin.
+// - Peut être emballé en un seul ClipForge.exe (Node SEA, voir build/) : les fichiers de l'app
+//   sont alors intégrés à l'exe, et les outils vont dans %LOCALAPPDATA%\ClipForge.
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -8,10 +10,14 @@ const path = require('path');
 const { exec, execFile, execFileSync, spawn } = require('child_process');
 
 const PORT = Number(process.env.PORT) || 5173;
-const ROOT = __dirname;
-const BIN = path.join(ROOT, 'bin');
-const DL = path.join(ROOT, 'downloads');
 const WIN = process.platform === 'win32';
+const sea = (() => { try { const m = require('node:sea'); return m.isSea() ? m : null; } catch { return null; } })();
+const ROOT = __dirname;
+const DATA = sea
+  ? path.join(process.env.LOCALAPPDATA || require('os').homedir(), 'ClipForge')
+  : ROOT;
+const BIN = path.join(DATA, 'bin');
+const DL = path.join(DATA, 'downloads');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.wasm': 'application/wasm',
@@ -24,6 +30,9 @@ const YTDLP_URL = {
   linux: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp',
 }[process.platform];
 const FFMPEG_ZIP = 'https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip';
+// YouTube exige un moteur JavaScript. Dans l'exe, process.execPath relance ClipForge et pas Node :
+// on prend le Node.js du PC s'il y en a un, sinon Deno, installé à la demande.
+const DENO_ZIP = 'https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip';
 
 const openBrowser = url => {
   if (!process.env.NO_OPEN) exec(WIN ? `start "" ${url}` : `open ${url}`);
@@ -74,6 +83,14 @@ function findFile(dir, name) {
   return null;
 }
 
+function jsRuntime() {
+  if (!sea) return `node:${process.execPath}`;
+  const node = findTool('node');
+  if (node) return `node:${node}`;
+  const deno = findTool('deno');
+  return deno ? `deno:${deno}` : null;
+}
+
 let installing = false;
 async function install(send) {
   fs.mkdirSync(BIN, { recursive: true });
@@ -97,6 +114,13 @@ async function install(send) {
     fs.rmSync(tmp, { recursive: true, force: true });
     fs.rmSync(zip, { force: true });
   }
+  if (!jsRuntime() && WIN) {
+    const zip = path.join(BIN, 'deno.zip');
+    await download(DENO_ZIP, zip, (got, total) => send({ type: 'progress', what: 'Deno', got, total }));
+    send({ type: 'info', text: 'Décompression de Deno…' });
+    await new Promise((res, rej) => execFile('tar', ['-xf', zip, '-C', BIN], err => (err ? rej(err) : res())));
+    fs.rmSync(zip, { force: true });
+  }
 }
 
 /* ---------------- Téléchargement d'une vidéo ---------------- */
@@ -116,8 +140,6 @@ function ytDownload(url, send, onChild) {
       // Certificats de Windows plutôt que ceux embarqués : indispensable si un antivirus
       // ou le réseau inspecte le HTTPS (sinon « CERTIFICATE_VERIFY_FAILED »).
       '--compat-options', 'no-certifi',
-      // YouTube exige un moteur JavaScript : on prête Node.js, déjà installé.
-      '--js-runtimes', `node:${process.execPath}`,
       '--print', 'before_dl:TITLE:%(title)s',
       '--print', 'after_move:FILE:%(filepath)s',
       '--progress-template', 'download:PROG:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s',
@@ -125,6 +147,8 @@ function ytDownload(url, send, onChild) {
       '-o', path.join(DL, '%(id)s.%(ext)s'),
     ];
     if (ffmpeg && ffmpeg.startsWith(BIN)) args.push('--ffmpeg-location', BIN);
+    const js = jsRuntime();
+    if (js) args.push('--js-runtimes', js);
     args.push(url);
 
     send({ type: 'info', text: ffmpeg ? 'Connexion à la vidéo…' : 'Connexion… (sans ffmpeg : qualité limitée)' });
@@ -183,7 +207,7 @@ function json(res, obj) {
 
 async function api(req, res, pathname, query) {
   if (pathname === '/api/yt/status') {
-    return json(res, { ytdlp: !!findTool('yt-dlp'), ffmpeg: !!findTool('ffmpeg'), canInstallFfmpeg: WIN });
+    return json(res, { ytdlp: !!findTool('yt-dlp'), ffmpeg: !!findTool('ffmpeg'), js: !!jsRuntime(), canInstallFfmpeg: WIN });
   }
   if (pathname === '/api/yt/install') {
     const send = sse(req, res);
@@ -219,26 +243,46 @@ async function api(req, res, pathname, query) {
   res.writeHead(404).end();
 }
 
-const server = http.createServer((req, res) => {
-  const { pathname, searchParams } = new URL(req.url, 'http://localhost');
-  if (pathname.startsWith('/api/')) { api(req, res, pathname, searchParams).catch(() => res.destroy()); return; }
-  const url = decodeURIComponent(pathname);
-  const file = path.normalize(path.join(ROOT, url === '/' ? 'index.html' : url));
-  if (!file.startsWith(ROOT) || file.startsWith(BIN)) { res.writeHead(403).end(); return; }
+const HEADERS = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'credentialless',
+  'Cache-Control': 'no-cache',
+};
+const typeOf = file => TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
+
+function serveDisk(req, res, file) {
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404).end('Not found'); return; }
-    res.writeHead(200, {
-      'Content-Type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
-      'Content-Length': st.size,
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'credentialless',
-      'Cache-Control': 'no-cache',
-    });
+    res.writeHead(200, { 'Content-Type': typeOf(file), 'Content-Length': st.size, ...HEADERS });
     const stream = fs.createReadStream(file);
     stream.on('error', () => res.destroy());
     req.on('close', () => stream.destroy());
     stream.pipe(res);
   });
+}
+
+// Dans l'exe, les fichiers de l'app sont des « assets » intégrés (clé = chemin relatif, ex. js/app.js).
+function serveAsset(res, key) {
+  let buf;
+  try { buf = Buffer.from(sea.getAsset(key)); } catch { res.writeHead(404).end('Not found'); return; }
+  res.writeHead(200, { 'Content-Type': typeOf(key), 'Content-Length': buf.length, ...HEADERS });
+  res.end(buf);
+}
+
+const server = http.createServer((req, res) => {
+  const { pathname, searchParams } = new URL(req.url, 'http://localhost');
+  if (pathname.startsWith('/api/')) { api(req, res, pathname, searchParams).catch(() => res.destroy()); return; }
+  let url;
+  try { url = decodeURIComponent(pathname); } catch { res.writeHead(400).end(); return; }
+  if (url.startsWith('/downloads/')) {
+    const file = path.join(DL, path.basename(url));
+    return serveDisk(req, res, file);
+  }
+  const rel = url === '/' ? 'index.html' : url.replace(/^\/+/, '');
+  if (sea) return serveAsset(res, path.posix.normalize(rel));
+  const file = path.normalize(path.join(ROOT, rel));
+  if (!file.startsWith(ROOT) || file.startsWith(BIN)) { res.writeHead(403).end(); return; }
+  serveDisk(req, res, file);
 }).listen(PORT, '127.0.0.1', () => {
   const url = `http://localhost:${PORT}`;
   console.log(`\n  ✂  ClipForge est lancé → ${url}\n  (fermez cette fenêtre pour arrêter)\n`);

@@ -148,7 +148,7 @@ async function serverStatus() {
   } catch { return null; }
 }
 
-const OFFLINE_MSG = 'L\'import par lien ne marche que dans la version installée sur ton PC (« Lancer ClipForge.bat ») : '
+const OFFLINE_MSG = 'L\'import par lien ne marche que dans la version installée sur ton PC (ClipForge.exe ou « Lancer ClipForge.bat ») : '
   + 'un site en ligne ne peut pas télécharger depuis YouTube. Ici, télécharge d\'abord la vidéo, puis glisse-la dans le cadre ci-dessous.';
 
 serverStatus().then(st => {
@@ -163,7 +163,7 @@ async function importLink() {
   if (!st) { ytShow(OFFLINE_MSG, { err: true }); return; }
   if (!/^https?:\/\/\S+$/i.test(url)) { ytShow('Colle un lien complet qui commence par https://', { err: true }); return; }
   // Première utilisation : on installe directement ce qui manque, puis on enchaîne sur le téléchargement.
-  if (!st.ytdlp || (!st.ffmpeg && st.canInstallFfmpeg)) {
+  if (!st.ytdlp || (!st.ffmpeg && st.canInstallFfmpeg) || (st.js === false && st.canInstallFfmpeg)) {
     if (!(await installTools())) return;
   }
   try {
