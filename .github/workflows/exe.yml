@@ -1,12 +1,17 @@
 # Fabrique ClipForge.exe sur Windows.
 # - Un tag v* (ex. v1.0.0) publie l'exe dans les « Releases » du dépôt.
-# - « Run workflow » (onglet Actions) le fabrique sans le publier : il est dans les artefacts du run.
+# - « Run workflow » (onglet Actions) avec un numéro de version le publie aussi (le tag est créé).
+#   Laisser le champ vide : l'exe est seulement dans les artefacts du run.
 name: ClipForge.exe
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version à publier (ex. v1.0.0), vide pour ne rien publier'
+        required: false
 
 permissions:
   contents: write
@@ -24,9 +29,12 @@ jobs:
         with:
           name: ClipForge
           path: dist/ClipForge.exe
-      - if: startsWith(github.ref, 'refs/tags/')
+      - if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.version || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
           files: dist/ClipForge.exe
           body: |
             Télécharge **ClipForge.exe** ci-dessous et double-clique dessus : ClipForge s'ouvre dans ton navigateur.
