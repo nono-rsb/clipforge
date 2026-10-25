@@ -353,3 +353,18 @@ main:has(#screen-montage.active) { max-width: 1640px; }
 .emoji-bar { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 .emoji-bar button { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; width: 32px; height: 30px; cursor: pointer; font-size: 16px; padding: 0; }
 .emoji-bar button:hover { border-color: var(--accent); transform: scale(1.08); }
+
+/* Montage : piste musique */
+.mt-musics { position: relative; height: 34px; margin-top: 6px; }
+.mt-mus { position: absolute; top: 0; height: 32px; border-radius: 7px; background: #22d38a2e repeat-x left center; border: 1px solid var(--good); color: #b9f5da; font-size: 11px; font-weight: 700; cursor: grab; touch-action: none; overflow: hidden; }
+.mt-mus span { position: absolute; left: 8px; top: 8px; right: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px #000; pointer-events: none; }
+.mt-mus.sel { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); background-color: #22d38a55; }
+.mt-mus .hd { position: absolute; top: 0; bottom: 0; width: 9px; cursor: ew-resize; z-index: 2; }
+.mt-mus .hd.l { left: 0; } .mt-mus .hd.r { right: 0; }
+.mt-mus .hd::after { content: ''; position: absolute; top: 25%; bottom: 25%; left: 3px; width: 3px; border-radius: 2px; background: #fff; opacity: 0; transition: .15s; }
+.mt-mus:hover .hd::after, .mt-mus.sel .hd::after { opacity: .85; }
+.mt-song .ico { width: 34px; height: 34px; display: grid; place-items: center; background: #22d38a26; border-radius: 8px; flex: none; }
+.mt-song { border-left-color: #22d38a; }
+#mtSongsHint { font-size: 12px; margin: 6px 0; }
+:root[data-theme="light"] .mt-mus { color: #0b5d3a; }
+:root[data-theme="light"] .mt-mus span { text-shadow: none; }

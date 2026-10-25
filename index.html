@@ -230,16 +230,13 @@
         <aside class="panel mt-bin">
           <h3>Médias</h3>
           <button id="mtAdd" class="btn ghost sm wide">＋ Ajouter vidéos ou photos</button>
-          <input id="mtInput" type="file" accept="video/*,image/*" multiple hidden>
+          <input id="mtInput" type="file" accept="video/*,image/*,audio/*" multiple hidden>
           <div id="mtMedia" class="mt-media"></div>
           <h3>Musique</h3>
-          <div class="music-row">
-            <button id="mtMusic" class="btn ghost sm">🎵 Choisir</button>
-            <span id="mtMusicName" class="muted">Aucune</span>
-            <button id="mtMusicOff" class="btn ghost sm icon hidden" title="Retirer">✕</button>
-            <input id="mtMusicInput" type="file" accept="audio/*" hidden>
-          </div>
-          <div class="field"><div class="label">Volume de la musique</div><input type="range" id="mtMusicVol" min="0" max="1" step="0.01" value="0.2"></div>
+          <button id="mtMusic" class="btn ghost sm wide">🎵 Ajouter une musique</button>
+          <input id="mtMusicInput" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac" multiple hidden>
+          <p id="mtSongsHint" class="muted small">Elle se pose sur la piste 🎵 de la timeline : glisse-la, raccourcis-la par les bords, clique dessus pour le volume et les fondus. Elle baisse toute seule quand quelqu'un parle.</p>
+          <div id="mtSongs" class="mt-media"></div>
           <h3>Sous-titres</h3>
           <div class="row2">
             <select id="mtLang">
@@ -295,10 +292,11 @@
               <div id="mtRuler" class="mt-ruler"></div>
               <div id="mtTrack" class="mt-track"></div>
               <div id="mtTexts" class="mt-texts"></div>
+              <div id="mtMusics" class="mt-musics"></div>
               <div id="mtPlayhead" class="mt-playhead"></div>
             </div>
           </div>
-          <p class="ed-keys muted">Raccourcis : <kbd>Espace</kbd> lecture · <kbd>S</kbd> couper · <kbd>Suppr</kbd> supprimer · <kbd>T</kbd> texte · <kbd>←</kbd><kbd>→</kbd> ±1 s · <kbd>↑</kbd><kbd>↓</kbd> coupe précédente / suivante · <kbd>Ctrl+Z</kbd> annuler · glisser un segment pour le déplacer</p>
+          <p class="ed-keys muted">Raccourcis : <kbd>Espace</kbd> lecture · <kbd>S</kbd> couper · <kbd>Suppr</kbd> supprimer · <kbd>T</kbd> texte · <kbd>←</kbd><kbd>→</kbd> ±1 s · <kbd>↑</kbd><kbd>↓</kbd> coupe précédente / suivante · <kbd>Ctrl+Z</kbd> annuler · glisser un segment ou une musique pour le déplacer</p>
         </div>
 
         <aside id="mtInspect" class="panel mt-inspect"></aside>

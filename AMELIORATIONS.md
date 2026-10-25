@@ -2,6 +2,14 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-25 (7e série) — Musique de fond du montage
+
+64. Piste musique sur la timeline du montage : plusieurs musiques possibles, chacune posée où on veut, avec sa forme d'onde
+65. Glisser un morceau pour le déplacer, tirer ses bords pour le raccourcir (le bord gauche avance dans la musique)
+66. Par morceau : volume, fondu d'entrée et de sortie, point de départ dans la musique, boucle, raccourcis « Toute la vidéo », « Commencer ici », « Finir ici » ; dupliquer, supprimer, annuler
+67. La musique baisse toute seule quand quelqu'un parle (ducking), puis remonte doucement ; désactivable par morceau
+68. On peut déposer des fichiers audio avec les vidéos : ils vont directement sur la piste musique ; la musique est retrouvée avec le projet sauvegardé
+
 ## 2026-10-25 (6e série)
 
 62. Annuler / rétablir dans l'éditeur de clip (Ctrl+Z / Ctrl+Y), pour tous les réglages, la découpe et le texte

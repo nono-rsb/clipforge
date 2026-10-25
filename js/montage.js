@@ -1,7 +1,7 @@
 // Montage de vidéos longues : plusieurs vidéos sur une timeline, coupe, réorganisation,
 // suppression automatique des silences, textes, musique, transitions, export.
 // Tout se joue en direct sur un canvas ; l'export enregistre ce rendu (comme pour les clips).
-import { clamp, clamp01, fmtTime, seekTo, decodeAudioSmart, computeEnergy, levelDb, resampleTo16k, buildWords } from './analyzer.js';
+import { clamp, clamp01, fmtTime, seekTo, decodeAudio, decodeAudioSmart, computeEnergy, levelDb, resampleTo16k, buildWords } from './analyzer.js';
 import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer } from './renderer.js';
 import { pickMime, outputSize } from './exporter.js';
 import { transcribePcm } from './transcribe.js';
@@ -11,20 +11,23 @@ const $$ = s => [...document.querySelectorAll(s)];
 const COLORS = ['#7c5cff', '#ff4fd8', '#22d38a', '#ffb020', '#3df5ff', '#ff5470'];
 const FADE = 0.35;
 const HOP = 0.05;
+const DUCK = 0.3; // niveau de la musique pendant que quelqu'un parle
 
 const M = {
   media: [], segs: [], texts: [],
   sel: null, // { kind: 'seg' | 'text', id }
   t: 0, playing: false, k: -1,
   aspect: '16:9', quality: '1080', zoom: 40, // pixels par seconde sur la timeline
-  music: null, musicVol: 0.2,
+  songs: [], tracks: [], // musiques importées et leurs morceaux posés sur la timeline
   caps: { on: true, style: 'karaoke', pos: 0.82, size: 0.8 }, groups: [],
   exporting: false,
   undo: [], redo: [],
 };
 
 let ui = null; // toast / notify fournis par app.js
-let ac = null, master = null, speaker = null, recDest = null, musicEl = null, musicGain = null;
+let ac = null, master = null, speaker = null, recDest = null, voiceBus = null, voiceMeter = null;
+const players = new Map(); // id du morceau → { el, gain }
+let duck = 1;
 const canvas = $('#mtCanvas');
 const ctx = canvas.getContext('2d');
 const bg = document.createElement('canvas');
@@ -42,10 +45,12 @@ function audio() {
   recDest = ac.createMediaStreamDestination();
   master.connect(speaker).connect(ac.destination);
   master.connect(recDest);
-  musicEl = new Audio();
-  musicEl.loop = true;
-  musicGain = ac.createGain();
-  ac.createMediaElementSource(musicEl).connect(musicGain).connect(master);
+  // Le son des vidéos passe par un bus mesuré : la musique baisse quand quelqu'un parle.
+  voiceBus = ac.createGain();
+  voiceBus.connect(master);
+  voiceMeter = ac.createAnalyser();
+  voiceMeter.fftSize = 1024;
+  voiceBus.connect(voiceMeter);
   M.media.forEach(wire);
   return ac;
 }
@@ -54,7 +59,7 @@ function wire(m) {
   if (!ac || m.gains || m.image) return;
   m.gains = m.els.map(el => {
     const g = ac.createGain();
-    ac.createMediaElementSource(el).connect(g).connect(master);
+    ac.createMediaElementSource(el).connect(g).connect(voiceBus);
     return g;
   });
 }
@@ -98,8 +103,11 @@ async function addImage(f) {
 }
 
 async function addFiles(files) {
+  const songs = files.filter(isAudio);
+  if (songs.length) await addSongs(songs);
   for (const f of files) {
     if (f.type.startsWith('image/')) { await addImage(f); continue; }
+    if (isAudio(f)) continue;
     if (!f.type.startsWith('video/') && !/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)) continue;
     const url = URL.createObjectURL(f);
     const els = [0, 1].map(() => {
@@ -169,14 +177,14 @@ function locate(T) {
 /* ---------------- Historique (annuler / rétablir) ---------------- */
 
 function snapshot() {
-  M.undo.push(JSON.stringify({ segs: M.segs, texts: M.texts }));
+  M.undo.push(JSON.stringify({ segs: M.segs, texts: M.texts, tracks: M.tracks }));
   if (M.undo.length > 60) M.undo.shift();
   M.redo = [];
 }
 function restore(from, to) {
   if (!from.length) return;
-  to.push(JSON.stringify({ segs: M.segs, texts: M.texts }));
-  ({ segs: M.segs, texts: M.texts } = JSON.parse(from.pop()));
+  to.push(JSON.stringify({ segs: M.segs, texts: M.texts, tracks: M.tracks }));
+  ({ segs: M.segs, texts: M.texts, tracks: M.tracks = [] } = JSON.parse(from.pop()));
   M.sel = null;
   render();
   seek(Math.min(M.t, total()));
@@ -213,7 +221,6 @@ async function play() {
   const { k, local } = locate(M.t);
   M.playing = true;
   await startSeg(k, local);
-  if (M.music) { musicEl.currentTime = M.music.duration ? M.t % M.music.duration : 0; musicEl.play().catch(() => {}); }
   $('#mtPlay').textContent = '❚❚';
 }
 
@@ -231,12 +238,13 @@ async function startSeg(k, local = 0) {
 function pause() {
   M.playing = false;
   M.media.forEach(m => m.els.forEach(v => v.pause()));
-  musicEl?.pause();
+  syncMusic();
   $('#mtPlay').textContent = '▶';
 }
 
 function tick() {
   requestAnimationFrame(tick);
+  syncMusic();
   if (!M.playing || M.k < 0) return;
   const s = M.segs[M.k], el = elFor(M.k);
   if (el.currentTime >= s.b - 0.02 || el.ended) {
@@ -248,6 +256,113 @@ function tick() {
   }
   M.t = startOf(M.k) + (el.currentTime - s.a) / s.speed;
   draw();
+}
+
+/* ---------------- Musique ---------------- */
+
+// Une musique importée peut être posée plusieurs fois sur la piste musique ; chaque morceau
+// a sa position, son point de départ dans le fichier, sa durée, son volume et ses fondus.
+const isAudio = f => f.type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac)$/i.test(f.name);
+const songOf = tr => M.songs.find(s => s.id === tr.sid);
+const songKey = s => `${s.name}|${s.file.size}`;
+const loopLen = tr => Math.max(0.5, songOf(tr).duration - tr.off);
+const trackEnd = () => M.tracks.reduce((a, tr) => Math.max(a, tr.t + tr.dur), 0);
+
+function newTrack(song, t) {
+  const rest = total() - t;
+  return { id: id('a'), sid: song.id, t, off: 0, dur: rest > 1 ? rest : song.duration, vol: 0.5, fin: 1, fout: 2, loop: true, duck: true };
+}
+
+async function addSongs(files) {
+  for (const f of files) {
+    const url = URL.createObjectURL(f);
+    const el = new Audio(url);
+    try {
+      await new Promise((res, rej) => { el.onloadedmetadata = res; el.onerror = rej; });
+    } catch {
+      ui.toast(`« ${f.name} » n'est pas un fichier audio lisible.`, 'err', 6000);
+      continue;
+    }
+    const song = { id: id('a'), name: f.name, file: f, url, duration: el.duration, wave: '' };
+    M.songs.push(song);
+    snapshot();
+    // La première musique couvre toute la vidéo ; les suivantes partent de la tête de lecture.
+    const tr = newTrack(song, M.tracks.length ? Math.min(M.t, Math.max(0, total() - 1)) : 0);
+    M.tracks.push(tr);
+    M.sel = { kind: 'music', id: tr.id };
+    waveform(song).then(render).catch(() => {});
+  }
+  render();
+}
+
+// Forme d'onde dessinée une fois par musique, puis répétée sur chaque morceau.
+async function waveform(song) {
+  const a = await decodeAudio(song.file);
+  const d = a.getChannelData(0), W = Math.min(4000, Math.max(200, Math.round(song.duration * 20))), H = 40;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffffb0';
+  const step = Math.floor(d.length / W);
+  const peaks = new Float32Array(W);
+  for (let x = 0; x < W; x++) {
+    let m = 0;
+    for (let j = x * step, e = j + step; j < e; j += 8) m = Math.max(m, Math.abs(d[j]));
+    peaks[x] = m;
+  }
+  const top = Math.max(...peaks) || 1;
+  peaks.forEach((v, x) => { const h = Math.max(1, (v / top) * H); g.fillRect(x, (H - h) / 2, 1, h); });
+  song.wave = c.toDataURL();
+}
+
+function player(tr) {
+  let p = players.get(tr.id);
+  if (!p || p.sid !== tr.sid) {
+    p?.el.pause();
+    const el = new Audio(songOf(tr).url);
+    el.preload = 'auto';
+    const gain = ac.createGain();
+    gain.gain.value = 0;
+    ac.createMediaElementSource(el).connect(gain).connect(master);
+    p = { el, gain, sid: tr.sid };
+    players.set(tr.id, p);
+  }
+  return p;
+}
+
+const voiceBuf = new Float32Array(1024);
+
+// Appelée à chaque image : lance, coupe, recale et dose chaque morceau de musique.
+function syncMusic() {
+  if (!ac) return;
+  voiceMeter.getFloatTimeDomainData(voiceBuf);
+  let e = 0;
+  for (const v of voiceBuf) e += v * v;
+  const talking = M.playing && Math.sqrt(e / voiceBuf.length) > 0.015;
+  // Baisse rapide quand la voix arrive, remontée douce quand elle s'arrête.
+  duck += ((talking ? DUCK : 1) - duck) * (talking ? 0.2 : 0.03);
+  const T = total();
+  let k = 1;
+  if (M.fadeIn) k = Math.min(k, clamp01(M.t / (FADE * 2)));
+  if (M.fadeOut) k = Math.min(k, clamp01((T - M.t) / (FADE * 4)));
+  for (const [tid, p] of players) {
+    if (!M.tracks.some(tr => tr.id === tid)) { p.el.pause(); players.delete(tid); }
+  }
+  for (const tr of M.tracks) {
+    if (!songOf(tr)) continue;
+    const local = M.t - tr.t;
+    const on = M.playing && local >= 0 && local < tr.dur;
+    if (!on && !players.has(tr.id)) continue;
+    const p = player(tr);
+    if (!on) { if (!p.el.paused) p.el.pause(); p.gain.gain.value = 0; continue; }
+    const want = tr.off + (tr.loop ? local % loopLen(tr) : local);
+    if (p.el.paused || Math.abs(p.el.currentTime - want) > 0.35) {
+      p.el.currentTime = want;
+      if (p.el.paused) p.el.play().catch(() => {});
+    }
+    const f = Math.min(tr.fin ? local / tr.fin : 1, tr.fout ? (tr.dur - local) / tr.fout : 1);
+    p.gain.gain.value = tr.vol * clamp01(f) * k * (tr.duck ? duck : 1);
+  }
 }
 
 /* ---------------- Rendu ---------------- */
@@ -292,14 +407,6 @@ function draw() {
     }, W, H);
   }
   M.texts.forEach(tx => { if (M.t >= tx.t && M.t <= tx.t + tx.dur) drawText(tx, W, H); });
-  if (musicGain) {
-    // La musique suit les fondus de début et de fin de la vidéo.
-    const T = total();
-    let k = 1;
-    if (M.fadeIn) k = Math.min(k, clamp01(M.t / (FADE * 2)));
-    if (M.fadeOut) k = Math.min(k, clamp01((T - M.t) / (FADE * 4)));
-    musicGain.gain.value = M.music ? M.musicVol * k : 0;
-  }
   $('#mtCur').textContent = fmtTime(M.t);
   $('#mtTotal').textContent = fmtTime(total());
   const ph = $('#mtPlayhead');
@@ -386,9 +493,11 @@ function drawText(tx, W, H) {
 
 /* ---------------- Édition ---------------- */
 
+const listOf = kind => ({ seg: M.segs, text: M.texts, music: M.tracks })[kind];
+
 function selected() {
   if (!M.sel) return null;
-  return (M.sel.kind === 'seg' ? M.segs : M.texts).find(x => x.id === M.sel.id) || null;
+  return listOf(M.sel.kind).find(x => x.id === M.sel.id) || null;
 }
 
 function split() {
@@ -410,8 +519,8 @@ function remove() {
   const x = selected();
   if (!x) return;
   snapshot();
-  if (M.sel.kind === 'seg') M.segs.splice(M.segs.indexOf(x), 1);
-  else M.texts.splice(M.texts.indexOf(x), 1);
+  const list = listOf(M.sel.kind);
+  list.splice(list.indexOf(x), 1);
   M.sel = null;
   render();
   seek(Math.min(M.t, total()));
@@ -437,9 +546,9 @@ function duplicate() {
     M.segs.splice(M.segs.indexOf(x) + 1, 0, c);
     M.sel = { kind: 'seg', id: c.id };
   } else {
-    const c = { ...x, id: id('t'), t: x.t + x.dur };
-    M.texts.push(c);
-    M.sel = { kind: 'text', id: c.id };
+    const c = { ...x, id: id(M.sel.kind === 'text' ? 't' : 'a'), t: x.t + x.dur };
+    listOf(M.sel.kind).push(c);
+    M.sel = { kind: M.sel.kind, id: c.id };
   }
   render();
 }
@@ -676,6 +785,7 @@ function autosave() {
     const data = {
       media: keys, aspect: M.aspect, caps: M.caps, fadeIn: M.fadeIn, fadeOut: M.fadeOut, texts: M.texts,
       segs: M.segs.map(({ mid, id: _, ...s }) => ({ ...s, m: keys[M.media.findIndex(x => x.id === mid)] })),
+      tracks: M.tracks.map(({ sid, id: _, ...tr }) => ({ ...tr, s: songKey(M.songs.find(x => x.id === sid)) })),
     };
     try { localStorage.setItem('clipforge.montage', JSON.stringify(data)); } catch {}
   }, 800);
@@ -697,6 +807,10 @@ function offerRestore() {
     snapshot();
     M.segs = data.segs.map(({ m, ...s }) => ({ ...s, id: id('s'), mid: byKey.get(m).id }));
     M.texts = data.texts || [];
+    // Les morceaux de musique reviennent si ces musiques sont déjà importées.
+    const songs = new Map(M.songs.map(x => [songKey(x), x]));
+    const back = (data.tracks || []).filter(tr => songs.has(tr.s)).map(({ s, ...tr }) => ({ ...tr, id: id('a'), sid: songs.get(s).id }));
+    if (back.length) M.tracks = back;
     Object.assign(M, { aspect: data.aspect || M.aspect, caps: { ...M.caps, ...data.caps }, fadeIn: data.fadeIn, fadeOut: data.fadeOut });
     t.remove();
     syncCapsUi();
@@ -731,12 +845,12 @@ function render() {
   });
   // Timeline
   const T = total();
-  const width = Math.max(T * M.zoom + 200, $('#mtTimeline').clientWidth);
+  const width = Math.max(Math.max(T, trackEnd()) * M.zoom + 200, $('#mtTimeline').clientWidth);
   $('#mtInner').style.width = `${width}px`;
   const ruler = $('#mtRuler');
   ruler.innerHTML = '';
   const step = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find(s => s * M.zoom >= 70) || 600;
-  for (let t = 0; t <= T + step; t += step) {
+  for (let t = 0; t <= Math.max(T, trackEnd()) + step; t += step) {
     const tick = document.createElement('span');
     tick.style.left = `${t * M.zoom}px`;
     tick.textContent = fmtTime(t);
@@ -826,10 +940,132 @@ function render() {
     });
     texts.append(b);
   });
+  renderMusic();
   inspector();
   $('#mtExport').disabled = !M.segs.length;
   $$('#mtAspect button').forEach(b => b.classList.toggle('on', b.dataset.v === M.aspect));
   sizeCanvas('preview');
+}
+
+// Bibliothèque des musiques et piste musique de la timeline.
+function renderMusic() {
+  const list = $('#mtSongs');
+  list.innerHTML = '';
+  M.songs.forEach(song => {
+    const d = document.createElement('div');
+    d.className = 'mt-file mt-song';
+    d.innerHTML = `<span class="ico">🎵</span><div><b></b><small>${fmtTime(song.duration)}</small></div><button class="btn ghost sm" title="Poser à la tête de lecture">＋</button>`;
+    d.querySelector('b').textContent = song.name;
+    d.querySelector('button').addEventListener('click', () => {
+      snapshot();
+      const tr = newTrack(song, M.t >= total() - 0.5 ? 0 : M.t);
+      M.tracks.push(tr);
+      M.sel = { kind: 'music', id: tr.id };
+      render();
+    });
+    list.append(d);
+  });
+  $('#mtSongsHint').classList.toggle('hidden', M.songs.length > 0);
+
+  const lane = $('#mtMusics');
+  lane.innerHTML = '';
+  M.tracks.forEach(tr => {
+    const song = songOf(tr);
+    if (!song) return;
+    const b = document.createElement('div');
+    b.className = `mt-mus${M.sel?.id === tr.id ? ' sel' : ''}`;
+    const place = () => {
+      b.style.left = `${tr.t * M.zoom}px`;
+      b.style.width = `${Math.max(12, tr.dur * M.zoom)}px`;
+      // La forme d'onde défile avec le point de départ et se répète quand la musique boucle.
+      b.style.backgroundSize = `${loopLen(tr) * M.zoom + tr.off * M.zoom}px 100%`;
+      b.style.backgroundPosition = `${-tr.off * M.zoom}px 0`;
+    };
+    if (song.wave) b.style.backgroundImage = `url(${song.wave})`;
+    place();
+    b.title = `${song.name} · ${fmtTime(tr.dur)}`;
+    b.innerHTML = `<span>🎵 ${tr.duck ? '' : '🔊 '}</span><i class="hd l" title="Tirer pour raccourcir"></i><i class="hd r" title="Tirer pour raccourcir ou rallonger"></i>`;
+    b.querySelector('span').append(song.name);
+    b.querySelectorAll('.hd').forEach(h => h.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      snapshot();
+      const left = h.classList.contains('l'), x0 = e.clientX, t0 = tr.t, off0 = tr.off, d0 = tr.dur;
+      const mv = ev => {
+        const d = (ev.clientX - x0) / M.zoom;
+        if (left) {
+          // Le bord gauche avance dans la musique : la fin reste en place.
+          const dd = clamp(d, -Math.min(t0, off0), d0 - 0.5);
+          tr.t = t0 + dd; tr.off = off0 + dd; tr.dur = d0 - dd;
+        } else tr.dur = clamp(d0 + d, 0.5, tr.loop ? 24 * 3600 : songOf(tr).duration - tr.off);
+        place();
+      };
+      const up = () => {
+        removeEventListener('pointermove', mv);
+        removeEventListener('pointerup', up);
+        M.sel = { kind: 'music', id: tr.id };
+        render();
+      };
+      addEventListener('pointermove', mv);
+      addEventListener('pointerup', up);
+    }));
+    // Glisser le morceau pour le déplacer dans le temps.
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      M.sel = { kind: 'music', id: tr.id };
+      const x0 = e.clientX, t0 = tr.t;
+      let moved = false;
+      const mv = ev => {
+        if (!moved && Math.abs(ev.clientX - x0) < 3) return;
+        if (!moved) { snapshot(); moved = true; }
+        tr.t = Math.max(0, t0 + (ev.clientX - x0) / M.zoom);
+        place();
+      };
+      const up = () => {
+        removeEventListener('pointermove', mv);
+        removeEventListener('pointerup', up);
+        render();
+        if (!moved) seek((x0 - $('#mtInner').getBoundingClientRect().left) / M.zoom);
+      };
+      addEventListener('pointermove', mv);
+      addEventListener('pointerup', up);
+    });
+    lane.append(b);
+  });
+}
+
+function musicInspector(box, x) {
+  const song = songOf(x), len = song.duration;
+  box.innerHTML = `<h3>Musique</h3><p class="muted"></p>
+    <div class="field"><div class="label">Volume <b id="mmVolV">${Math.round(x.vol * 100)} %</b></div><input type="range" id="mmVol" min="0" max="1.5" step="0.05" value="${x.vol}"></div>
+    <label class="switch-row"><span><span class="label">Baisser quand quelqu'un parle</span><small>La musique se met en retrait sous la voix, puis remonte</small></span><input type="checkbox" id="mmDuck" ${x.duck ? 'checked' : ''}><span class="switch"></span></label>
+    <label class="switch-row"><span><span class="label">Boucler</span><small>Recommence au début si la musique est trop courte</small></span><input type="checkbox" id="mmLoop" ${x.loop ? 'checked' : ''}><span class="switch"></span></label>
+    <div class="field"><div class="label">Démarrer la musique à <b class="mono" id="mmOffV">${fmtTime(x.off)}</b></div><input type="range" id="mmOff" min="0" max="${Math.max(0, len - 0.5)}" step="0.1" value="${x.off}"></div>
+    <div class="row2"><div class="field"><div class="label">Début (s)</div><input type="number" class="input" id="mmT" min="0" step="0.1" value="${x.t.toFixed(1)}"></div>
+    <div class="field"><div class="label">Durée (s)</div><input type="number" class="input" id="mmD" min="0.5" step="0.5" value="${x.dur.toFixed(1)}"></div></div>
+    <div class="row2"><div class="field"><div class="label">Fondu d'entrée <b id="mmFinV">${x.fin} s</b></div><input type="range" id="mmFin" min="0" max="5" step="0.5" value="${x.fin}"></div>
+    <div class="field"><div class="label">Fondu de sortie <b id="mmFoutV">${x.fout} s</b></div><input type="range" id="mmFout" min="0" max="8" step="0.5" value="${x.fout}"></div></div>
+    <div class="chips"><button id="mmFull">↔ Toute la vidéo</button><button id="mmHere">⇤ Commencer ici</button><button id="mmEnd">⇥ Finir ici</button></div>`;
+  box.querySelector('p').textContent = `${song.name} · ${fmtTime(len)}`;
+  const maxDur = () => (x.loop ? 24 * 3600 : len - x.off);
+  const bind = (sel, ev, fn, re) => {
+    $(sel).addEventListener('pointerdown', snapshot, { once: true });
+    $(sel).addEventListener('focus', snapshot, { once: true });
+    $(sel).addEventListener(ev, e => { fn(e.target); if (re) render(); });
+  };
+  bind('#mmVol', 'input', el => { x.vol = +el.value; $('#mmVolV').textContent = `${Math.round(x.vol * 100)} %`; });
+  bind('#mmFin', 'input', el => { x.fin = +el.value; $('#mmFinV').textContent = `${x.fin} s`; });
+  bind('#mmFout', 'input', el => { x.fout = +el.value; $('#mmFoutV').textContent = `${x.fout} s`; });
+  bind('#mmOff', 'input', el => { x.off = +el.value; x.dur = Math.min(x.dur, maxDur()); $('#mmOffV').textContent = fmtTime(x.off); });
+  $('#mmOff').addEventListener('change', render);
+  bind('#mmT', 'change', el => { x.t = Math.max(0, +el.value || 0); }, true);
+  bind('#mmD', 'change', el => { x.dur = clamp(+el.value || 1, 0.5, maxDur()); }, true);
+  $('#mmDuck').addEventListener('change', e => { snapshot(); x.duck = e.target.checked; render(); });
+  $('#mmLoop').addEventListener('change', e => { snapshot(); x.loop = e.target.checked; x.dur = Math.min(x.dur, maxDur()); render(); });
+  const act = (sel, fn) => $(sel).addEventListener('click', () => { snapshot(); fn(); x.dur = clamp(x.dur, 0.5, maxDur()); render(); });
+  act('#mmFull', () => { x.t = 0; x.dur = Math.max(0.5, total()); });
+  act('#mmHere', () => { const end = x.t + x.dur; x.t = Math.min(M.t, end - 0.5); x.dur = end - x.t; });
+  act('#mmEnd', () => { x.dur = Math.max(0.5, M.t - x.t); });
 }
 
 function inspector() {
@@ -898,6 +1134,8 @@ function inspector() {
       seek(M.t);
       ui.toast('Réglages appliqués à tous les segments', 'ok', 2000);
     });
+  } else if (M.sel.kind === 'music') {
+    musicInspector(box, x);
   } else {
     box.innerHTML = `<h3>Texte</h3>
       <div class="field"><textarea id="mtTextInput" rows="3"></textarea></div>
@@ -1002,32 +1240,15 @@ export function initMontage(helpers) {
   });
   // Clic sur la règle ou dans le vide de la timeline : déplace la tête de lecture.
   $('#mtInner').addEventListener('pointerdown', e => {
-    if (e.target.closest('.mt-seg, .mt-txt')) return;
+    if (e.target.closest('.mt-seg, .mt-txt, .mt-mus')) return;
     const r = $('#mtInner').getBoundingClientRect();
     seek((e.clientX - r.left) / M.zoom);
-    if (e.target.closest('#mtTrack') || e.target === $('#mtInner')) { M.sel = null; render(); }
+    if (e.target.closest('#mtTrack, #mtMusics') || e.target === $('#mtInner')) { M.sel = null; render(); }
   });
 
   const musicIn = $('#mtMusicInput');
   $('#mtMusic').addEventListener('click', () => musicIn.click());
-  musicIn.addEventListener('change', e => {
-    const f = e.target.files[0];
-    if (!f) return;
-    audio();
-    if (M.music) URL.revokeObjectURL(M.music.url);
-    M.music = { name: f.name, url: URL.createObjectURL(f), duration: 0 };
-    musicEl.src = M.music.url;
-    musicEl.onloadedmetadata = () => { M.music.duration = musicEl.duration; };
-    $('#mtMusicName').textContent = f.name;
-    $('#mtMusicOff').classList.remove('hidden');
-  });
-  $('#mtMusicOff').addEventListener('click', () => {
-    M.music = null;
-    musicEl?.pause();
-    $('#mtMusicName').textContent = 'Aucune';
-    $('#mtMusicOff').classList.add('hidden');
-  });
-  $('#mtMusicVol').addEventListener('input', e => { M.musicVol = +e.target.value; });
+  musicIn.addEventListener('change', e => { addSongs([...e.target.files]); e.target.value = ''; });
 
   document.addEventListener('keydown', e => {
     if (!stage.classList.contains('active') || M.exporting) return;
@@ -1055,3 +1276,4 @@ export function leaveMontage() { pause(); }
 
 // Accès de débogage depuis la console.
 window.clipforgeMontage = M;
+window.clipforgeMusic = players;
