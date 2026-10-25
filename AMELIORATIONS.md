@@ -2,6 +2,15 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-25 (4e série) — Photos et précision
+
+55. Photos dans le montage (4 s par défaut avec effet Ken Burns, durée réglable)
+56. Poignées sur les bords des segments de la timeline : tirer pour raccourcir ou rallonger
+57. Position horizontale par segment (pour bien cadrer en passant du 16:9 au 9:16)
+58. La musique suit les fondus de début et de fin du montage
+59. Fond sombre derrière les sous-titres, pour la lisibilité
+60. Palette d'emojis à insérer dans le texte des sous-titres
+
 ## 2026-10-25 (3e série) — Confort et finitions
 
 46. Zoom dynamique ⚡ : petit zoom (« punch-in ») sur les mots forts, comme les créateurs pros

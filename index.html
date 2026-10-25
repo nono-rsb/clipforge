@@ -229,8 +229,8 @@
       <div class="mt-body">
         <aside class="panel mt-bin">
           <h3>Médias</h3>
-          <button id="mtAdd" class="btn ghost sm wide">＋ Ajouter des vidéos</button>
-          <input id="mtInput" type="file" accept="video/*" multiple hidden>
+          <button id="mtAdd" class="btn ghost sm wide">＋ Ajouter vidéos ou photos</button>
+          <input id="mtInput" type="file" accept="video/*,image/*" multiple hidden>
           <div id="mtMedia" class="mt-media"></div>
           <h3>Musique</h3>
           <div class="music-row">
@@ -447,6 +447,10 @@
             <input type="range" id="emojiSize" min="0.5" max="1.8" step="0.05">
           </div>
           <label class="switch-row">
+            <span><span class="label">Fond derrière le texte</span><small>Plus lisible sur une image chargée</small></span>
+            <input type="checkbox" data-bool="capBg"><span class="switch"></span>
+          </label>
+          <label class="switch-row">
             <span><span class="label">Mots-clés en couleur</span><small>« argent », « secret », « erreur »… restent colorés</small></span>
             <input type="checkbox" data-bool="highlight"><span class="switch"></span>
           </label>
@@ -457,6 +461,7 @@
           <div class="field">
             <div class="label">Texte (corrigez les erreurs de transcription)</div>
             <textarea id="edText" rows="7" spellcheck="true" placeholder="Aucune transcription — activez « Sous-titres IA » à l'import, ou tapez le texte ici."></textarea>
+            <div class="emoji-bar" id="emojiBar" title="Cliquer pour insérer à l'endroit du curseur"></div>
           </div>
           <div class="field">
             <div class="label">Mes préréglages</div>

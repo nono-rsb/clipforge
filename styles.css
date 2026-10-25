@@ -345,3 +345,11 @@ main:has(#screen-montage.active) { max-width: 1640px; }
 #preview { touch-action: none; }
 @media (max-width: 700px) { .help-cols { grid-template-columns: 1fr; } }
 .round.sm { color: var(--text); border: 1px solid var(--line); font-weight: 700; }
+.mt-seg .hd { position: absolute; top: 0; bottom: 0; width: 9px; cursor: ew-resize; z-index: 2; }
+.mt-seg .hd.l { left: 0; }
+.mt-seg .hd.r { right: 0; }
+.mt-seg .hd::after { content: ''; position: absolute; top: 30%; bottom: 30%; left: 3px; width: 3px; border-radius: 2px; background: #fff; opacity: 0; transition: .15s; }
+.mt-seg:hover .hd::after, .mt-seg.sel .hd::after { opacity: .85; }
+.emoji-bar { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.emoji-bar button { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; width: 32px; height: 30px; cursor: pointer; font-size: 16px; padding: 0; }
+.emoji-bar button:hover { border-color: var(--accent); transform: scale(1.08); }

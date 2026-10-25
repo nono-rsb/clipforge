@@ -812,6 +812,19 @@ function download(blob, name) {
 
 $('#exportSrt').addEventListener('click', () => exportSrt(state.editing));
 
+// Palette d'emojis : insère l'emoji à l'endroit du curseur dans le texte des sous-titres.
+$('#emojiBar').innerHTML = '🔥 😂 😱 🤯 💰 💸 🚀 ✅ ❌ ⚠️ 💡 🎯 👀 🙏 ❤️ 💪 🏆 🤔 😭 👇'.split(' ').map(e => `<button type="button">${e}</button>`).join('');
+$('#emojiBar').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const ta = $('#edText');
+  const at = ta.selectionStart ?? ta.value.length;
+  const before = ta.value.slice(0, at), after = ta.value.slice(at);
+  ta.value = `${before}${before && !/\s$/.test(before) ? ' ' : ''}${b.textContent}${after && !/^\s/.test(after) ? ' ' : ''}${after}`;
+  ta.focus();
+  setClipText(state.editing, ta.value);
+});
+
 // Accroche proposée : la phrase du clip la plus « accrocheuse » (question, mots-clés, longueur courte).
 function suggestHook(clip) {
   const sentences = [];
@@ -843,7 +856,7 @@ $('#hookSuggest').addEventListener('click', () => {
 
 // Préréglages : le style complet d'un clip, enregistré sous un nom, réutilisable sur les prochaines vidéos.
 const STYLE_KEYS = ['captions', 'capStyle', 'capSize', 'capPos', 'uppercase', 'emojis', 'capFont', 'capColor', 'maxWords', 'emojiSize',
-  'highlight', 'censor', 'filter', 'speed', 'fade', 'watermark', 'hook', 'hookDur', 'hookTheme', 'progress', 'layout', 'zoom'];
+  'highlight', 'censor', 'capBg', 'punch', 'filter', 'speed', 'fade', 'watermark', 'hook', 'hookDur', 'hookTheme', 'progress', 'layout', 'zoom'];
 const presets = () => { try { return JSON.parse(store.get('presets') || '{}'); } catch { return {}; } };
 function fillPresets() {
   $('#presetList').innerHTML = '<option value="">— Choisir un préréglage —</option>'
@@ -1133,7 +1146,7 @@ $('#copyCaption').addEventListener('click', async () => {
 $('#applyAll').addEventListener('click', () => {
   const src = state.editing.opts;
   const keys = ['captions', 'capStyle', 'capSize', 'capPos', 'uppercase', 'emojis', 'layout', 'reframe', 'podcast', 'aspect', 'zoom', 'progress', 'hook',
-    'capFont', 'capColor', 'maxWords', 'emojiSize', 'filter', 'speed', 'volume', 'fade', 'music', 'musicVol', 'watermark', 'hookDur', 'hookTheme', 'highlight', 'censor'];
+    'capFont', 'capColor', 'maxWords', 'emojiSize', 'filter', 'speed', 'volume', 'fade', 'music', 'musicVol', 'watermark', 'hookDur', 'hookTheme', 'highlight', 'censor', 'capBg', 'punch'];
   state.clips.forEach(c => {
     if (c === state.editing) return;
     keys.forEach(k => { c.opts[k] = src[k]; });

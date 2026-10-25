@@ -268,6 +268,14 @@ function drawCaptions(ctx, groups, t, o, W, H) {
   ctx.save();
   ctx.translate(W / 2, H * o.capPos);
   ctx.scale(sc, sc);
+  if (o.capBg) {
+    // Fond sombre arrondi derrière les lignes, pour la lisibilité sur une image chargée.
+    const widths = lines.map(line => line.reduce((a, k, i) => a + k.width + (i ? space : 0), 0));
+    const bw = Math.max(...widths) + base * 0.7, bh = lines.length * base * 1.18 + base * 0.4;
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    roundRect(ctx, -bw / 2, -bh / 2, bw, bh, base * 0.3);
+    ctx.fill();
+  }
   const accent = accentOf(o);
   // Mots-clés toujours en couleur (seconde couleur, pour rester distincte du mot prononcé).
   const kwColor = accent.toUpperCase() === '#FF4FD8' ? '#22D38A' : '#FF4FD8';

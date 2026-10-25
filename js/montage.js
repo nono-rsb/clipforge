@@ -51,7 +51,7 @@ function audio() {
 }
 
 function wire(m) {
-  if (!ac || m.gains) return;
+  if (!ac || m.gains || m.image) return;
   m.gains = m.els.map(el => {
     const g = ac.createGain();
     ac.createMediaElementSource(el).connect(g).connect(master);
@@ -61,8 +61,45 @@ function wire(m) {
 
 /* ---------------- Médias ---------------- */
 
+// Une photo se comporte comme une vidéo muette : une horloge remplace la lecture.
+const IMAGE_MAX = 60;
+class Still extends EventTarget {
+  constructor(img) {
+    super();
+    this.img = img; this.paused = true; this.playbackRate = 1; this.preservesPitch = true;
+    this._t = 0; this._base = 0;
+  }
+  get videoWidth() { return this.img.naturalWidth; }
+  get videoHeight() { return this.img.naturalHeight; }
+  get ended() { return this.currentTime >= IMAGE_MAX; }
+  get currentTime() { return this.paused ? this._t : this._t + ((performance.now() - this._base) / 1000) * this.playbackRate; }
+  set currentTime(v) {
+    this._t = v; this._base = performance.now();
+    queueMicrotask(() => this.dispatchEvent(new Event('seeked')));
+  }
+  play() { if (this.paused) { this._base = performance.now(); this.paused = false; } return Promise.resolve(); }
+  pause() { if (!this.paused) { this._t = this.currentTime; this.paused = true; } }
+}
+
+async function addImage(f) {
+  const url = URL.createObjectURL(f);
+  const img = new Image();
+  img.src = url;
+  try { await img.decode(); } catch { ui.toast(`« ${f.name} » n'est pas une image lisible.`, 'err', 6000); return; }
+  const m = {
+    id: id('m'), name: f.name, file: f, url, image: true, els: [new Still(img), new Still(img)], duration: IMAGE_MAX,
+    w: img.naturalWidth, h: img.naturalHeight, color: COLORS[M.media.length % COLORS.length], thumb: '', energy: null, words: [],
+  };
+  M.media.push(m);
+  m.thumb = await thumbnail(m);
+  snapshot();
+  M.segs.push(newSeg(m, 0, 4, { kb: true }));
+  if (M.segs.length === 1) M.aspect = m.w >= m.h ? '16:9' : '9:16';
+}
+
 async function addFiles(files) {
   for (const f of files) {
+    if (f.type.startsWith('image/')) { await addImage(f); continue; }
     if (!f.type.startsWith('video/') && !/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)) continue;
     const url = URL.createObjectURL(f);
     const els = [0, 1].map(() => {
@@ -96,8 +133,8 @@ async function addFiles(files) {
 }
 
 async function thumbnail(m) {
-  const v = m.els[1];
-  await seekTo(v, Math.min(1, m.duration / 2));
+  const v = m.image ? m.els[1].img : m.els[1];
+  if (!m.image) await seekTo(v, Math.min(1, m.duration / 2));
   const c = document.createElement('canvas');
   c.width = 160; c.height = Math.round(160 * m.h / m.w) || 90;
   c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
@@ -234,7 +271,7 @@ function draw() {
       ctx.filter = FILTERS[s.filter]?.css || 'none';
       // Effet Ken Burns : zoom lent et continu sur toute la durée du segment.
       const z = (s.zoom || 1) * (s.kb ? 1 + 0.15 * clamp01(local / d) : 1);
-      if (s.layout === 'fit') drawFit(el, W, H); else drawFill(el, W, H, z);
+      if (s.layout === 'fit') drawFit(el, W, H); else drawFill(el, W, H, z, s.cx ?? 0.5);
       ctx.restore();
     }
     // Transition « fondu » : noir à l'entrée de ce segment et à la sortie du précédent.
@@ -255,7 +292,14 @@ function draw() {
     }, W, H);
   }
   M.texts.forEach(tx => { if (M.t >= tx.t && M.t <= tx.t + tx.dur) drawText(tx, W, H); });
-  if (musicGain) musicGain.gain.value = M.music ? M.musicVol : 0;
+  if (musicGain) {
+    // La musique suit les fondus de début et de fin de la vidéo.
+    const T = total();
+    let k = 1;
+    if (M.fadeIn) k = Math.min(k, clamp01(M.t / (FADE * 2)));
+    if (M.fadeOut) k = Math.min(k, clamp01((T - M.t) / (FADE * 4)));
+    musicGain.gain.value = M.music ? M.musicVol * k : 0;
+  }
   $('#mtCur').textContent = fmtTime(M.t);
   $('#mtTotal').textContent = fmtTime(total());
   const ph = $('#mtPlayhead');
@@ -267,12 +311,12 @@ function draw() {
   }
 }
 
-function drawFill(el, W, H, zoom = 1) {
+function drawFill(el, W, H, zoom = 1, cx = 0.5) {
   const vw = el.videoWidth, vh = el.videoHeight, r = W / H;
   let sw = vw, sh = vh;
   if (vw / vh > r) sw = vh * r; else sh = vw / r;
   sw /= zoom; sh /= zoom;
-  ctx.drawImage(el, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, W, H);
+  ctx.drawImage(el.img || el, clamp(cx * vw - sw / 2, 0, vw - sw), (vh - sh) / 2, sw, sh, 0, 0, W, H);
 }
 
 function drawFit(el, W, H) {
@@ -280,12 +324,12 @@ function drawFit(el, W, H) {
   const bw = 54, bh = Math.max(8, Math.round(bw * H / W));
   if (bg.width !== bw || bg.height !== bh) { bg.width = bw; bg.height = bh; }
   bgx.filter = 'blur(2px)';
-  bgx.drawImage(el, -2, -2, bw + 4, bh + 4);
+  bgx.drawImage(el.img || el, -2, -2, bw + 4, bh + 4);
   ctx.drawImage(bg, 0, 0, W, H);
   ctx.fillStyle = 'rgba(0,0,0,.35)';
   ctx.fillRect(0, 0, W, H);
   const sc = Math.min(W / vw, H / vh);
-  ctx.drawImage(el, (W - vw * sc) / 2, (H - vh * sc) / 2, vw * sc, vh * sc);
+  ctx.drawImage(el.img || el, (W - vw * sc) / 2, (H - vh * sc) / 2, vw * sc, vh * sc);
 }
 
 export const TEXT_ANIMS = { fade: 'Fondu', pop: 'Pop', slide: 'Glissé', type: 'Machine à écrire' };
@@ -418,7 +462,7 @@ async function removeSilences(all) {
   const busy = ui.toast('Analyse du son pour trouver les silences…', '', 0);
   try {
     for (const m of new Set(targets.map(mediaOf))) {
-      if (!m.energy) m.energy = computeEnergy(await decodeAudio(m.file), HOP);
+      if (!m.energy && !m.image) m.energy = computeEnergy(await decodeAudio(m.file), HOP);
     }
   } catch (e) {
     busy.remove();
@@ -430,6 +474,7 @@ async function removeSilences(all) {
   let removed = 0;
   for (const s of targets) {
     const m = mediaOf(s), e = m.energy;
+    if (m.image) continue;
     const parts = [];
     let runStart = null, keepFrom = s.a;
     for (let t = s.a; t <= s.b; t += HOP) {
@@ -658,7 +703,7 @@ function render() {
     d.innerHTML = `<img alt=""><div><b></b><small>${fmtTime(m.duration)} · ${m.w}×${m.h}</small></div><button class="btn ghost sm" title="Ajouter à la fin de la timeline">＋</button>`;
     d.querySelector('img').src = m.thumb;
     d.querySelector('b').textContent = m.name;
-    d.querySelector('button').addEventListener('click', () => { snapshot(); M.segs.push(newSeg(m, 0, m.duration)); render(); draw(); });
+    d.querySelector('button').addEventListener('click', () => { snapshot(); M.segs.push(newSeg(m, 0, m.image ? 4 : m.duration, m.image ? { kb: true } : {})); render(); draw(); });
     $('#mtMedia').append(d);
   });
   // Timeline
@@ -685,7 +730,33 @@ function render() {
     b.style.backgroundImage = `url(${m.thumb})`;
     b.draggable = true;
     b.title = `${m.name} · ${fmtTime(s.a)} → ${fmtTime(s.b)}`;
-    b.innerHTML = `<span>${s.trans === 'fade' && k ? '◐ ' : ''}${s.speed !== 1 ? `${s.speed}× ` : ''}${fmtTime(segDur(s))}</span>`;
+    b.innerHTML = `<span>${m.image ? '🖼 ' : ''}${s.trans === 'fade' && k ? '◐ ' : ''}${s.speed !== 1 ? `${s.speed}× ` : ''}${fmtTime(segDur(s))}</span><i class="hd l" title="Tirer pour raccourcir"></i><i class="hd r" title="Tirer pour raccourcir"></i>`;
+    // Poignées : tirer un bord du segment pour le raccourcir ou le rallonger.
+    b.querySelectorAll('.hd').forEach(h => {
+      h.addEventListener('mousedown', e => e.preventDefault());
+      h.addEventListener('click', e => e.stopPropagation());
+      h.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        snapshot();
+        const left = h.classList.contains('l'), x0 = e.clientX, a0 = s.a, b0 = s.b;
+        const mv = ev => {
+          const d = ((ev.clientX - x0) / M.zoom) * s.speed;
+          if (left) s.a = clamp(a0 + d, 0, s.b - 0.2); else s.b = clamp(b0 + d, s.a + 0.2, m.duration);
+          b.style.width = `${Math.max(4, segDur(s) * M.zoom)}px`;
+          b.querySelector('span').textContent = fmtTime(segDur(s));
+        };
+        const up = () => {
+          removeEventListener('pointermove', mv);
+          removeEventListener('pointerup', up);
+          M.sel = { kind: 'seg', id: s.id };
+          render();
+          seek(left ? startOf(k) : startOf(k) + segDur(s) - 0.05);
+        };
+        addEventListener('pointermove', mv);
+        addEventListener('pointerup', up);
+      });
+    });
     b.addEventListener('click', e => {
       M.sel = { kind: 'seg', id: s.id };
       const r = b.getBoundingClientRect();
@@ -753,13 +824,14 @@ function inspector() {
   }
   if (M.sel.kind === 'seg') {
     const m = mediaOf(x);
-    box.innerHTML = `<h3>Segment</h3><p class="muted" title="${m.name}">${m.name}</p>
+    box.innerHTML = `<h3>${m.image ? 'Photo' : 'Segment'}</h3><p class="muted" title="${m.name}">${m.name}${m.image ? ' · règle la durée avec « Fin »' : ''}</p>
       <div class="field"><div class="label">Début dans la vidéo <b class="mono" id="mtAv">${fmtTime(x.a)}</b></div><input type="range" id="mtA" min="0" max="${m.duration}" step="0.05" value="${x.a}"></div>
       <div class="field"><div class="label">Fin dans la vidéo <b class="mono" id="mtBv">${fmtTime(x.b)}</b></div><input type="range" id="mtB" min="0" max="${m.duration}" step="0.05" value="${x.b}"></div>
       <div class="field"><div class="label">Vitesse</div><div class="chips" id="mtSpeed">${[0.5, 1, 1.25, 1.5, 2].map(v => `<button data-v="${v}" class="${v === x.speed ? 'on' : ''}">${String(v).replace('.', ',')}×</button>`).join('')}</div></div>
       <div class="field"><div class="label">Volume <b id="mtVolV">${Math.round(x.vol * 100)} %</b></div><input type="range" id="mtVol" min="0" max="2" step="0.05" value="${x.vol}"></div>
       <div class="field"><div class="label">Filtre</div><div class="chips" id="mtFilter">${Object.entries(FILTERS).map(([k, f]) => `<button data-v="${k}" class="${k === x.filter ? 'on' : ''}">${f.label}</button>`).join('')}</div></div>
       <div class="field"><div class="label">Transition avant ce segment</div><div class="chips" id="mtTrans"><button data-v="none" class="${x.trans !== 'fade' ? 'on' : ''}">Coupe franche</button><button data-v="fade" class="${x.trans === 'fade' ? 'on' : ''}">◐ Fondu au noir</button></div></div>
+      ${x.layout !== 'fit' ? `<div class="field"><div class="label">Position horizontale</div><input type="range" id="mtCx" min="0" max="1" step="0.01" value="${x.cx ?? 0.5}"></div>` : ''}
       <div class="field"><div class="label">Zoom <b id="mtZv">${(x.zoom || 1).toFixed(2)}×</b></div><input type="range" id="mtZ" min="1" max="2.5" step="0.05" value="${x.zoom || 1}"></div>
       <label class="switch-row"><span><span class="label">Effet Ken Burns</span><small>Zoom lent et continu, idéal sur un plan fixe</small></span><input type="checkbox" id="mtKb" ${x.kb ? 'checked' : ''}><span class="switch"></span></label>
       <div class="field"><div class="label">Mise en page</div><div class="chips" id="mtLayout"><button data-v="fill" class="${x.layout === 'fill' ? 'on' : ''}">Remplir</button><button data-v="fit" class="${x.layout === 'fit' ? 'on' : ''}">Ajusté + fond flou</button></div></div>
@@ -789,6 +861,8 @@ function inspector() {
     chips('#mtFilter', 'filter');
     chips('#mtTrans', 'trans');
     chips('#mtLayout', 'layout');
+    $('#mtCx')?.addEventListener('pointerdown', snapshot, { once: true });
+    $('#mtCx')?.addEventListener('input', e => { x.cx = +e.target.value; draw(); });
     $('#mtZ').addEventListener('pointerdown', snapshot, { once: true });
     $('#mtZ').addEventListener('input', e => { x.zoom = +e.target.value; $('#mtZv').textContent = `${x.zoom.toFixed(2)}×`; draw(); });
     $('#mtKb').addEventListener('change', e => { snapshot(); x.kb = e.target.checked; draw(); });
