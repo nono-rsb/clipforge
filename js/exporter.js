@@ -22,7 +22,9 @@ export function outputSize(aspect, quality) {
   return [Math.round(w * k / 2) * 2, Math.round(h * k / 2) * 2];
 }
 
-export async function exportClip({ url, clip, env, quality = '1080', onProgress, signal }) {
+export async function exportClip({ url, clip, env, quality = '1080', music = null, onProgress, signal }) {
+  const o = clip.opts;
+  const speed = o.speed || 1;
   const [W, H] = outputSize(clip.opts.aspect, quality);
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
@@ -34,10 +36,24 @@ export async function exportClip({ url, clip, env, quality = '1080', onProgress,
   v.playsInline = true;
   await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error('Lecture vidéo impossible')); });
   await seekTo(v, clip.start);
+  v.playbackRate = speed;
+  v.preservesPitch = true;
 
   const ac = new AudioContext();
   const dest = ac.createMediaStreamDestination();
-  ac.createMediaElementSource(v).connect(dest);
+  const voice = ac.createGain();
+  voice.gain.value = o.volume ?? 1;
+  ac.createMediaElementSource(v).connect(voice).connect(dest);
+
+  // Musique de fond en boucle, mixée sous la voix.
+  let m = null;
+  if (music?.url && o.music) {
+    m = new Audio(music.url);
+    m.loop = true;
+    const mg = ac.createGain();
+    mg.gain.value = o.musicVol ?? 0.15;
+    ac.createMediaElementSource(m).connect(mg).connect(dest);
+  }
 
   const stream = new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
   const mime = pickMime();
@@ -53,7 +69,16 @@ export async function exportClip({ url, clip, env, quality = '1080', onProgress,
   renderFrame(ctx, v, clip, clip.start, env);
   rec.start(500);
   await ac.resume();
+  if (o.fade) {
+    // Fondu sonore assorti au fondu au noir de l'image.
+    const real = (clip.end - clip.start) / speed, now = ac.currentTime;
+    voice.gain.setValueAtTime(0, now);
+    voice.gain.linearRampToValueAtTime(o.volume ?? 1, now + 0.4);
+    voice.gain.setValueAtTime(o.volume ?? 1, now + Math.max(0.4, real - 0.4));
+    voice.gain.linearRampToValueAtTime(0, now + real);
+  }
   await v.play();
+  if (m) await m.play().catch(() => {});
 
   await new Promise(resolve => {
     let done = false;
@@ -71,6 +96,7 @@ export async function exportClip({ url, clip, env, quality = '1080', onProgress,
   });
 
   v.pause();
+  m?.pause();
   await new Promise(r => setTimeout(r, 120));
   rec.stop();
   await stopped;

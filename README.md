@@ -22,11 +22,16 @@ L'import par lien (YouTube…) marche avec l'exe et avec Node.js, mais pas sur l
 | Suivi des visages | Détection des visages (MediaPipe) toutes les 0,5 s sur les clips. Le cadre 9:16 reste sur la personne, reste sur le même visage s'il y en a plusieurs, et ne bouge pas pour des petits mouvements. Sans visage, il suit le mouvement |
 | Mode podcast | Quand 2 personnes sont dans le même plan : **Orateur actif** (plein cadre qui coupe sur la personne qui parle) ou **Écran partagé** (gauche en haut, droite en bas, celle qui écoute légèrement assombrie). L'orateur est détecté par l'ouverture de la bouche (MediaPipe FaceLandmarker). Si le visage est flou, l'app utilise à la place le mouvement des pixels de la bouche |
 | Recadrage | Mode auto ou manuel, zoom (le visage est placé dans le tiers supérieur), mode « ajusté + fond flou » |
-| Sous-titres IA | Whisper (tiny / base / small) dans le navigateur, 5 styles animés mot à mot, texte modifiable |
+| Sous-titres IA | Whisper (tiny / base / small) dans le navigateur, 8 styles animés (Karaoké, Surligné, Impact, Néon, Minimal, Mot à mot, Beast, Rétro), 4 polices, couleur du mot actif, 1 à 4 mots à la fois, texte modifiable, export `.srt` |
 | Emojis automatiques | Environ 50 thèmes (argent 💰, peur 😱, gagner 🏆, secret 🤫…) en français et en anglais, affichés en grand au-dessus des sous-titres. Tu peux aussi taper tes propres emojis dans le texte |
 | Import par lien | Colle un lien YouTube (ou TikTok, Twitch, X…) : le serveur local le télécharge avec yt-dlp, jusqu'en 1080p avec ffmpeg. Les deux outils s'installent en un clic dans `bin/`. Les vidéos téléchargées vont dans `downloads/` et sont effacées après 24 h |
 | Titre d'accroche | Bandeau affiché pendant les 3 premières secondes |
-| Éditeur | Découpe ±30 s avec forme d'onde, légende et hashtags suggérés, « appliquer à tous » |
+| Éditeur | Découpe ±30 s avec forme d'onde, légende et hashtags suggérés, « appliquer à tous », raccourcis clavier (Espace, ←/→, I/O, M) |
+| Effets | Filtres couleur (Vif, Cinéma, Chaud, Froid, N&B), vitesse 1× à 1,5×, volume de la voix, fondu d'entrée et de sortie, musique de fond, filigrane @pseudo |
+| Accroche | Texte, couleurs (blanc, noir, jaune), durée 2 à 5 s, miniature PNG |
+| Résultats | Recherche d'un mot dans la transcription (crée un clip autour), clip manuel, dupliquer, supprimer (avec annulation), filtre par score, tri par score, date ou durée |
+| Rapidité | L'analyse est gardée dans le navigateur : relancer la même vidéo est instantané. Notification quand l'analyse ou l'export finit, temps restant pendant l'export |
+| **Montage** (onglet) | Plusieurs vidéos sur une timeline avec miniatures, zoom, glisser-déposer pour réordonner, couper (S), supprimer, dupliquer, annuler/rétablir. **Retrait automatique des silences** (seuil et durée réglables). Par segment : début/fin, vitesse 0,5× à 2×, volume, filtre, fondu au noir, mise en page remplie ou ajustée. Textes (Titre, Encadré, Bandeau) glissables dans le temps, musique de fond, fondus de début et de fin, export 16:9, 9:16, 1:1 ou 4:5 en 1080p/720p |
 | Export | MP4 (ou WebM selon le navigateur) en 1080p ou 720p, un clip ou tous d'un coup |
 
 ## Bon à savoir
@@ -47,4 +52,6 @@ N'envoie pas les dossiers `bin/` et `downloads/` (le fichier `.gitignore` s'en c
 - `js/faces.js` : détection des visages (MediaPipe BlazeFace, image découpée en carrés)
 - `js/whisper-worker.js` : transcription Whisper (Transformers.js)
 - `js/app.js` : interface
+- `js/montage.js` : onglet Montage (timeline, silences, textes, export)
+- `js/cache.js` : analyses gardées dans le navigateur (IndexedDB)
 - `build/build-exe.js` : fabrique `ClipForge.exe` (Node SEA). GitHub le fait tout seul à chaque tag `v*` (`.github/workflows/exe.yml`)

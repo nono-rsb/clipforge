@@ -1,10 +1,11 @@
 import {
   decodeAudio, computeEnergy, resampleTo16k, analyzeVisual, makeTrack, refineFaces,
-  buildWords, findClips, fmtTime, seekTo, clamp,
+  buildWords, findClips, fmtTime, seekTo, clamp, norm,
 } from './analyzer.js';
 import { loadFaceDetector, detectFaces } from './faces.js';
-import { renderFrame, groupWords, CAPTION_STYLES } from './renderer.js';
+import { renderFrame, groupWords, CAPTION_STYLES, CAPTION_FONTS, FILTERS } from './renderer.js';
 import { exportClip, outputSize } from './exporter.js';
+import { cacheKey, loadAnalysis, saveAnalysis } from './cache.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -14,7 +15,7 @@ const HOP = 0.1;
 const state = {
   file: null, url: null, duration: 0,
   energy: null, words: [], visual: null,
-  clips: [], editing: null,
+  clips: [], editing: null, music: null,
   settings: { length: '30-60', count: 6, aspect: '9:16', transcribe: true, faces: true, podcast: 'speaker', lang: 'fr', model: 'onnx-community/whisper-base', quality: '1080' },
   exporting: false,
 };
@@ -23,6 +24,12 @@ const env = { track: makeTrack(null) };
 /* ---------------- Utilitaires UI ---------------- */
 
 function show(id) {
+  // Une analyse qui finit pendant qu'on est dans l'onglet Montage ne doit pas le fermer.
+  if (id !== 'montage' && $('#modes .on')?.dataset.mode === 'montage') {
+    lastClipScreen = id;
+    if (id === 'results') toast('✂ Tes clips sont prêts : reviens dans l\'onglet Clipping.', 'ok', 6000);
+    return;
+  }
   $$('.screen').forEach(s => s.classList.toggle('active', s.id === `screen-${id}`));
   window.scrollTo(0, 0);
 }
@@ -35,6 +42,16 @@ function toast(msg, kind = '', ms = 4500) {
   if (ms) setTimeout(() => el.remove(), ms);
   return el;
 }
+
+// Prévient quand une longue tâche finit pendant que l'onglet est caché.
+function notify(text) {
+  if (!document.hidden) return;
+  try { if (Notification.permission === 'granted') new Notification('ClipForge', { body: text }); } catch {}
+  const old = document.title;
+  document.title = `✅ ${text}`;
+  addEventListener('focus', () => { document.title = old; }, { once: true });
+}
+const askNotify = () => { try { if (Notification.permission === 'default') Notification.requestPermission(); } catch {} };
 
 function scoreClass(s) { return s >= 85 ? 's-hi' : s >= 70 ? 's-mid' : 's-lo'; }
 
@@ -229,10 +246,23 @@ $('#generate').addEventListener('click', generate);
 
 async function generate() {
   const S = state.settings;
+  askNotify();
   show('processing');
   $('#procFile').textContent = `${state.file.name} · ${fmtTime(state.duration)}`;
   ['audio', 'visual', 'asr', 'detect', 'faces'].forEach(s => setStep(s, '', 0, ''));
   try {
+    const key = cacheKey(state.file, S);
+    const cached = await loadAnalysis(key);
+    let detect = null, withFaces = 0;
+    if (cached) {
+      // Même vidéo, mêmes réglages : on reprend l'analyse enregistrée au lieu de tout refaire.
+      ({ energy: state.energy, words: state.words, visual: state.visual } = cached);
+      setStep('audio', 'done', 1, 'Repris de la dernière analyse');
+      setStep('visual', 'done', 1, 'Repris de la dernière analyse');
+      setStep('asr', state.words.length ? 'done' : 'skip', 1, state.words.length ? `${state.words.length} mots (déjà transcrits)` : 'Pas de transcription');
+      if (S.faces) { try { await loadFaceDetector(); detect = detectFaces; } catch (e) { console.warn(e); } }
+      withFaces = state.visual.samples.filter(s => s.faces?.length).length;
+    } else {
     // 1. Audio
     // Le décodage est d'un seul bloc (pas de progression native) : on affiche le temps écoulé
     // et une estimation pour que l'utilisateur voie que ça avance.
@@ -258,7 +288,6 @@ async function generate() {
     }
 
     // 2. Visuel
-    let detect = null;
     if (S.faces) {
       setStep('visual', 'run', 0, 'Chargement du détecteur de visages…');
       try { await loadFaceDetector(); detect = detectFaces; }
@@ -270,7 +299,7 @@ async function generate() {
     setStep('visual', 'run', 0, 'Échantillonnage des images…');
     state.visual = await analyzeVisual(video, state.duration, p => setStep('visual', 'run', p, `Image à ${fmtTime(p * state.duration)}`), detect);
     env.track = makeTrack(state.visual);
-    const withFaces = state.visual.samples.filter(s => s.faces?.length).length;
+    withFaces = state.visual.samples.filter(s => s.faces?.length).length;
     setStep('visual', 'done', 1, `${state.visual.cuts.length} changements de plan · ${detect ? `visages sur ${Math.round(100 * withFaces / (state.visual.samples.length || 1))} % des images` : 'suivi du mouvement'}`);
 
     // 3. Transcription
@@ -293,6 +322,9 @@ async function generate() {
         toast('Transcription impossible (connexion requise la 1re fois). On continue sans sous-titres.', 'err', 8000);
       }
     } else setStep('asr', 'skip', 1, S.transcribe ? 'Pas d\'audio' : 'Désactivée');
+    saveAnalysis(key, { energy: state.energy, words: state.words, visual: structuredClone(state.visual) });
+    }
+    env.track = makeTrack(state.visual);
 
     // 4. Détection
     setStep('detect', 'run', 0.3, 'Évaluation des passages candidats…');
@@ -324,6 +356,7 @@ async function generate() {
     } else setStep('faces', 'skip', 1, detect ? 'Aucun visage détecté — cadrage sur le mouvement' : 'Désactivé');
     await renderResults();
     show('results');
+    notify(`${state.clips.length} clips prêts`);
   } catch (e) {
     console.error(e);
     toast(`Erreur pendant l'analyse : ${e.message}`, 'err', 9000);
@@ -365,11 +398,19 @@ function transcribe(pcm, model, language) {
 
 /* ---------------- Clips ---------------- */
 
+const store = {
+  get: k => { try { return localStorage.getItem(`clipforge.${k}`); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(`clipforge.${k}`, v); } catch {} },
+};
+
 function defaultOpts() {
   return {
     aspect: state.settings.aspect, layout: 'fill', reframe: 'auto', podcast: 'off', cropX: 0.5, zoom: 1,
     captions: true, capStyle: 'karaoke', capSize: 1, capPos: state.settings.aspect === '16:9' ? 0.82 : 0.7,
     uppercase: true, emojis: true, hook: true, hookText: '', progress: false,
+    capFont: 'montserrat', capColor: '', maxWords: 3, emojiSize: 1,
+    filter: 'none', speed: 1, volume: 1, fade: false, music: !!state.music, musicVol: 0.15,
+    watermark: store.get('watermark') || '', hookDur: 3, hookTheme: 'light',
   };
 }
 
@@ -385,7 +426,7 @@ function refreshWords(clip) {
   } else {
     clip.words = clip.words.filter(w => w.e > clip.start && w.s < clip.end);
   }
-  clip.groups = groupWords(clip.words);
+  clip.groups = groupWords(clip.words, clip.opts.maxWords);
 }
 
 function setClipText(clip, text) {
@@ -403,7 +444,7 @@ function setClipText(clip, text) {
   }
   clip.textEdited = true;
   clip.text = toks.join(' ');
-  clip.groups = groupWords(clip.words);
+  clip.groups = groupWords(clip.words, clip.opts.maxWords);
 }
 
 let thumbQueue = Promise.resolve();
@@ -426,9 +467,11 @@ async function renderResults() {
   await document.fonts.load('900 40px Montserrat').catch(() => {});
   const grid = $('#clipGrid');
   grid.innerHTML = '';
-  const order = [...state.clips].sort((a, b) => $('#sortBy').value === 'time' ? a.start - b.start : b.score - a.score);
+  const sort = $('#sortBy').value, min = +$('#minScore').value;
+  const order = state.clips.filter(c => c.score >= min).sort((a, b) =>
+    sort === 'time' ? a.start - b.start : sort === 'length' ? (a.end - a.start) - (b.end - b.start) : b.score - a.score);
   const byScore = [...state.clips].sort((a, b) => b.score - a.score);
-  $('#resCount').textContent = state.clips.length;
+  $('#resCount').textContent = order.length < state.clips.length ? `${order.length} / ${state.clips.length}` : state.clips.length;
   $('#resSource').textContent = `${state.file.name} · ${fmtTime(state.duration)}${state.words.length ? ' · transcription IA' : ''}`;
   for (const [i, clip] of order.entries()) {
     const card = document.createElement('div');
@@ -453,6 +496,8 @@ async function renderResults() {
         <div class="card-actions">
           <button class="btn ghost sm" data-act="edit">✎ Éditer</button>
           <button class="btn primary sm" data-act="export">⬇ Exporter</button>
+          <button class="btn ghost sm icon" data-act="dup" title="Dupliquer (pour tester une autre version)">⧉</button>
+          <button class="btn ghost sm icon" data-act="del" title="Supprimer">🗑</button>
         </div>
       </div>`;
     card.querySelector('.card-title').textContent = clip.title;
@@ -460,6 +505,8 @@ async function renderResults() {
     card.querySelector('.thumb').addEventListener('click', () => openEditor(clip));
     card.querySelector('[data-act=edit]').addEventListener('click', () => openEditor(clip));
     card.querySelector('[data-act=export]').addEventListener('click', () => runExport([clip]));
+    card.querySelector('[data-act=dup]').addEventListener('click', () => duplicateClip(clip));
+    card.querySelector('[data-act=del]').addEventListener('click', () => deleteClip(clip));
     grid.append(card);
     await renderThumb(clip, card.querySelector('canvas'));
   }
@@ -475,6 +522,88 @@ async function refreshCard(clip) {
 }
 
 $('#sortBy').addEventListener('change', renderResults);
+$('#minScore').addEventListener('input', e => { $('#minScoreVal').textContent = e.target.value; });
+$('#minScore').addEventListener('change', renderResults);
+
+function newId() { return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`; }
+
+function duplicateClip(clip) {
+  const copy = { ...clip, id: newId(), title: `${clip.title} (copie)`, opts: { ...clip.opts }, words: clip.words.map(w => ({ ...w })) };
+  copy.groups = groupWords(copy.words, copy.opts.maxWords);
+  state.clips.splice(state.clips.indexOf(clip) + 1, 0, copy);
+  renderResults();
+  toast('Clip dupliqué', 'ok', 2000);
+}
+
+let lastDeleted = null;
+function deleteClip(clip) {
+  const i = state.clips.indexOf(clip);
+  if (i < 0) return;
+  state.clips.splice(i, 1);
+  lastDeleted = { clip, i };
+  renderResults();
+  const t = toast('Clip supprimé. ', '', 6000);
+  const undo = document.createElement('button');
+  undo.className = 'btn ghost sm';
+  undo.textContent = 'Annuler';
+  undo.onclick = () => {
+    if (!lastDeleted) return;
+    state.clips.splice(lastDeleted.i, 0, lastDeleted.clip);
+    lastDeleted = null;
+    t.remove();
+    renderResults();
+  };
+  t.append(undo);
+}
+
+// Clip créé à la main autour d'un instant (recherche dans la transcription ou bouton « Clip manuel »).
+function manualClip(at, len = 30) {
+  const start = clamp(at - 3, 0, Math.max(0, state.duration - 5));
+  const end = Math.min(state.duration, start + len);
+  const cw = state.words.filter(w => w.s >= start && w.e <= end);
+  const clip = initClip({
+    id: newId(), start, end, score: 60, reasons: [['✋', 'Choisi à la main']],
+    title: cw.length ? cw.slice(0, 10).map(w => w.w).join(' ') : `Clip à ${fmtTime(start)}`, hashtags: [], text: '',
+  });
+  state.clips.push(clip);
+  renderResults().then(() => openEditor(clip));
+}
+
+$('#addClip').addEventListener('click', () => {
+  const t = state.editing ? video.currentTime : Math.min(state.duration / 2, 10);
+  manualClip(t);
+});
+
+// Recherche d'un mot ou d'une phrase dans la transcription.
+$('#searchText').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const q = norm(e.target.value);
+  const box = $('#searchResults');
+  if (!q) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  if (!state.words.length) { box.innerHTML = '<p class="muted">Pas de transcription pour cette vidéo : active « Sous-titres IA » à l\'import.</p>'; return; }
+  const terms = q.split(' ').filter(Boolean);
+  const hits = [];
+  for (let i = 0; i < state.words.length && hits.length < 30; i++) {
+    if (terms.every((tm, k) => norm(state.words[i + k]?.w || '').startsWith(tm))) {
+      hits.push(i);
+      i += terms.length;
+    }
+  }
+  if (!hits.length) { box.innerHTML = `<p class="muted">Aucun passage avec « ${escapeHtml(e.target.value)} ».</p>`; return; }
+  box.innerHTML = `<p class="muted">${hits.length} passage(s) — clique pour créer un clip autour :</p>`;
+  hits.forEach(i => {
+    const ctxWords = state.words.slice(Math.max(0, i - 6), i + 10);
+    const b = document.createElement('button');
+    b.className = 'hit';
+    b.innerHTML = `<b class="mono">${fmtTime(state.words[i].s)}</b> <span></span>`;
+    b.querySelector('span').textContent = `…${ctxWords.map(w => w.w).join(' ')}…`;
+    b.addEventListener('click', () => manualClip(state.words[i].s));
+    box.append(b);
+  });
+});
+
+const escapeHtml = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 $('#newVideo').addEventListener('click', () => { show('upload'); });
 $('#exportAll').addEventListener('click', () => runExport([...state.clips].sort((a, b) => b.score - a.score)));
 
@@ -490,6 +619,9 @@ async function runExport(clips) {
   const wasPlaying = !video.paused;
   video.pause();
   const t = toast('', '', 0);
+  // Temps restant : l'export se fait en temps réel, à la vitesse choisie pour chaque clip.
+  const realLen = c => (c.end - c.start) / (c.opts.speed || 1);
+  let left = clips.reduce((a, c) => a + realLen(c), 0);
   try {
     for (const [i, clip] of clips.entries()) {
       const card = document.querySelector(`.card[data-id="${clip.id}"]`);
@@ -497,14 +629,16 @@ async function runExport(clips) {
       const bar = card?.querySelector('.exp-bar i');
       const label = clips.length > 1 ? `Export ${i + 1}/${clips.length}` : 'Export';
       const { blob, ext } = await exportClip({
-        url: state.url, clip, env, quality: state.settings.quality,
+        url: state.url, clip, env, quality: state.settings.quality, music: state.music,
         onProgress: p => {
           const pc = Math.round(clamp(p, 0, 1) * 100);
-          t.textContent = `⏺ ${label} — ${pc} % · « ${clip.title.slice(0, 40)} » (gardez l'onglet visible)`;
+          const rest = left - clamp(p, 0, 1) * realLen(clip);
+          t.textContent = `⏺ ${label} — ${pc} % · reste ~${fmtTime(rest)} · « ${clip.title.slice(0, 40)} » (gardez l'onglet visible)`;
           if (bar) bar.style.width = `${pc}%`;
         },
       });
       card?.classList.remove('exporting');
+      left -= realLen(clip);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `${String(i + 1).padStart(2, '0')}_${clip.score}_${safeName(clip.title)}.${ext}`;
@@ -512,6 +646,7 @@ async function runExport(clips) {
       setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
     }
     toast(clips.length > 1 ? `✅ ${clips.length} clips exportés` : '✅ Clip exporté', 'ok');
+    notify(clips.length > 1 ? `${clips.length} clips exportés` : 'Clip exporté');
   } catch (e) {
     console.error(e);
     toast(`Échec de l'export : ${e.message}`, 'err', 8000);
@@ -546,6 +681,68 @@ function styleGrid() {
 }
 styleGrid();
 
+$('#capFont').innerHTML = Object.entries(CAPTION_FONTS).map(([k, f]) => `<option value="${k}" style="font-family:'${f.family}'">${f.label}</option>`).join('');
+$('#filterChips').innerHTML = Object.entries(FILTERS).map(([k, f]) => `<button data-v="${k}">${f.label}</button>`).join('');
+Object.values(CAPTION_FONTS).forEach(f => document.fonts.load(`${f.weight} 40px "${f.family}"`).catch(() => {}));
+
+// Musique de fond : un seul fichier pour toute la session, activable clip par clip.
+const music = new Audio();
+music.loop = true;
+$('#musicPick').addEventListener('click', () => $('#musicInput').click());
+$('#musicInput').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (state.music) URL.revokeObjectURL(state.music.url);
+  state.music = { name: f.name, url: URL.createObjectURL(f) };
+  music.src = state.music.url;
+  state.clips.forEach(c => { c.opts.music = true; });
+  syncEditor();
+  toast(`🎵 Musique ajoutée à tous les clips : ${f.name}`, 'ok', 3000);
+});
+function syncMusic() {
+  const c = state.editing;
+  const on = c && state.music && c.opts.music && !video.paused;
+  if (!on) { if (!music.paused) music.pause(); return; }
+  music.volume = clamp(c.opts.musicVol, 0, 1);
+  music.muted = video.muted;
+  if (music.paused) {
+    const rel = (video.currentTime - c.start) / (c.opts.speed || 1);
+    music.currentTime = music.duration ? rel % music.duration : 0;
+    music.play().catch(() => {});
+  }
+}
+
+function exportSrt(clip) {
+  const sp = clip.opts.speed || 1;
+  const ts = t => {
+    const ms = Math.max(0, Math.round(((t - clip.start) / sp) * 1000));
+    const p = (n, l = 2) => String(n).padStart(l, '0');
+    return `${p(Math.floor(ms / 3600000))}:${p(Math.floor(ms / 60000) % 60)}:${p(Math.floor(ms / 1000) % 60)},${p(ms % 1000, 3)}`;
+  };
+  const lines = clip.groups.filter(g => g.e > clip.start && g.s < clip.end)
+    .map((g, i) => `${i + 1}\n${ts(Math.max(g.s, clip.start))} --> ${ts(Math.min(g.e + 0.3, clip.end))}\n${g.words.map(w => w.w).join(' ')}\n`);
+  if (!lines.length) { toast('Pas de sous-titres à exporter pour ce clip.', 'err'); return; }
+  download(new Blob([lines.join('\n')], { type: 'text/plain' }), `${safeName(clip.title)}.srt`);
+}
+
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+}
+
+$('#exportSrt').addEventListener('click', () => exportSrt(state.editing));
+$('#exportThumb').addEventListener('click', () => {
+  const c = state.editing;
+  const [W, H] = outputSize(c.opts.aspect, '1080');
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  renderFrame(cv.getContext('2d'), video, c, video.currentTime, env);
+  cv.toBlob(b => download(b, `${safeName(c.title)}_miniature.png`), 'image/png');
+});
+
 function sizePreview() {
   const [W, H] = outputSize(state.editing.opts.aspect, '720');
   const k = 960 / Math.max(W, H);
@@ -575,6 +772,8 @@ function openEditor(clip) {
 function closeEditor() {
   const clip = state.editing;
   video.pause();
+  music.pause();
+  video.playbackRate = 1;
   state.editing = null;
   cancelAnimationFrame(raf);
   $('#editor').classList.add('hidden');
@@ -605,14 +804,27 @@ function syncEditor() {
   $('#zoomVal').textContent = `${o.zoom.toFixed(2)}×`;
   $('#capSize').value = o.capSize;
   $('#capPos').value = o.capPos;
+  $$('.chips[data-optnum]').forEach(ch => ch.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === o[ch.dataset.optnum])));
+  $('#capFont').value = o.capFont;
+  $('#capColor').value = o.capColor || CAPTION_STYLES[o.capStyle]?.accent || '#FFE600';
+  $('#emojiSize').value = o.emojiSize;
+  $('#volume').value = o.volume;
+  $('#volumeVal').textContent = `${Math.round(o.volume * 100)} %`;
+  $('#musicVol').value = o.musicVol;
+  $('#musicVolVal').textContent = `${Math.round(o.musicVol * 100)} %`;
+  $('#musicName').textContent = state.music ? state.music.name : 'Aucune';
+  $('#watermark').value = o.watermark;
+  video.playbackRate = o.speed || 1;
+  video.preservesPitch = true;
+  video.volume = clamp(o.volume, 0, 1);
   $('#trimStart').value = c.start;
   $('#trimEnd').value = c.end;
   $('#startVal').textContent = fmtTime(c.start);
   $('#endVal').textContent = fmtTime(c.end);
-  $('#lenVal').textContent = `${(c.end - c.start).toFixed(1)} s`;
+  $('#lenVal').textContent = `${(c.end - c.start).toFixed(1)} s${o.speed > 1 ? ` (${((c.end - c.start) / o.speed).toFixed(1)} s en ${o.speed}×)` : ''}`;
   $('#scrub').min = c.start;
   $('#scrub').max = c.end;
-  $('#tDur').textContent = fmtTime(c.end - c.start);
+  $('#tDur').textContent = fmtTime((c.end - c.start) / (o.speed || 1));
   drawWave();
 }
 
@@ -649,7 +861,8 @@ function loop() {
   if (!c) return;
   if (!video.paused && (video.currentTime >= c.end || video.ended)) video.currentTime = c.start;
   renderFrame(pctx, video, c, video.currentTime, env);
-  const rel = video.currentTime - c.start;
+  const rel = (video.currentTime - c.start) / (c.opts.speed || 1);
+  syncMusic();
   $('#tCur').textContent = fmtTime(rel);
   if (document.activeElement !== $('#scrub')) $('#scrub').value = video.currentTime;
   $('#playBtn').textContent = video.paused ? '▶' : '❚❚';
@@ -668,7 +881,8 @@ function togglePlay() {
 
 $('#playBtn').addEventListener('click', togglePlay);
 pv.addEventListener('click', togglePlay);
-$('#muteBtn').addEventListener('click', () => { video.muted = !video.muted; $('#muteBtn').textContent = video.muted ? '🔇' : '🔊'; });
+const toggleMute = () => { video.muted = !video.muted; $('#muteBtn').textContent = video.muted ? '🔇' : '🔊'; };
+$('#muteBtn').addEventListener('click', toggleMute);
 $('#scrub').addEventListener('input', e => { video.currentTime = +e.target.value; });
 $('#edClose').addEventListener('click', closeEditor);
 $('#edExport').addEventListener('click', () => runExport([state.editing]));
@@ -676,6 +890,14 @@ document.addEventListener('keydown', e => {
   if (!state.editing || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
   if (e.code === 'Escape') closeEditor();
+  if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+    e.preventDefault();
+    const d = (e.shiftKey ? 5 : 1) * (e.code === 'ArrowLeft' ? -1 : 1);
+    video.currentTime = clamp(video.currentTime + d, win[0], win[1]);
+  }
+  if (e.code === 'KeyI') setTrim('start', video.currentTime);
+  if (e.code === 'KeyO') setTrim('end', video.currentTime);
+  if (e.code === 'KeyM') toggleMute();
 });
 
 $$('.tabs button').forEach(b => b.addEventListener('click', () => {
@@ -693,12 +915,25 @@ $$('.chips[data-opt]').forEach(ch => bindChips(ch, v => {
   syncEditor();
 }));
 $$('[data-bool]').forEach(i => i.addEventListener('change', () => { state.editing.opts[i.dataset.bool] = i.checked; }));
+$$('.chips[data-optnum]').forEach(ch => bindChips(ch, v => {
+  const c = state.editing;
+  c.opts[ch.dataset.optnum] = +v;
+  if (ch.dataset.optnum === 'maxWords') c.groups = groupWords(c.words, c.opts.maxWords);
+  syncEditor();
+}));
+$('#capFont').addEventListener('change', e => { state.editing.opts.capFont = e.target.value; });
+$('#capColor').addEventListener('input', e => { state.editing.opts.capColor = e.target.value; });
+$('#capColorReset').addEventListener('click', () => { state.editing.opts.capColor = ''; syncEditor(); });
+$('#watermark').addEventListener('input', e => { state.editing.opts.watermark = e.target.value; store.set('watermark', e.target.value); });
 
 const numOpt = (id, key, after) => $(id).addEventListener('input', e => { state.editing.opts[key] = +e.target.value; after?.(); });
 numOpt('#cropX', 'cropX');
 numOpt('#zoom', 'zoom', () => { $('#zoomVal').textContent = `${state.editing.opts.zoom.toFixed(2)}×`; });
 numOpt('#capSize', 'capSize');
 numOpt('#capPos', 'capPos');
+numOpt('#emojiSize', 'emojiSize');
+numOpt('#volume', 'volume', () => { const o = state.editing.opts; video.volume = clamp(o.volume, 0, 1); $('#volumeVal').textContent = `${Math.round(o.volume * 100)} %`; });
+numOpt('#musicVol', 'musicVol', () => { $('#musicVolVal').textContent = `${Math.round(state.editing.opts.musicVol * 100)} %`; });
 
 function setTrim(which, t) {
   const c = state.editing;
@@ -725,12 +960,40 @@ $('#copyCaption').addEventListener('click', async () => {
 });
 $('#applyAll').addEventListener('click', () => {
   const src = state.editing.opts;
-  const keys = ['captions', 'capStyle', 'capSize', 'capPos', 'uppercase', 'emojis', 'layout', 'reframe', 'podcast', 'aspect', 'zoom', 'progress', 'hook'];
-  state.clips.forEach(c => { if (c !== state.editing) keys.forEach(k => { c.opts[k] = src[k]; }); });
+  const keys = ['captions', 'capStyle', 'capSize', 'capPos', 'uppercase', 'emojis', 'layout', 'reframe', 'podcast', 'aspect', 'zoom', 'progress', 'hook',
+    'capFont', 'capColor', 'maxWords', 'emojiSize', 'filter', 'speed', 'volume', 'fade', 'music', 'musicVol', 'watermark', 'hookDur', 'hookTheme'];
+  state.clips.forEach(c => {
+    if (c === state.editing) return;
+    keys.forEach(k => { c.opts[k] = src[k]; });
+    c.groups = groupWords(c.words, c.opts.maxWords);
+  });
   state.clips.forEach(c => { if (c !== state.editing) refreshCard(c); });
   toast('Style appliqué à tous les clips', 'ok', 2500);
 });
 window.addEventListener('resize', () => state.editing && drawWave());
+
+/* ---------------- Modes : Clipping / Montage ---------------- */
+
+let montage = null;
+let lastClipScreen = 'upload';
+$('#modes').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-mode]');
+  if (!b || b.classList.contains('on')) return;
+  $$('#modes button').forEach(x => x.classList.toggle('on', x === b));
+  if (b.dataset.mode === 'montage') {
+    lastClipScreen = $('.screen.active')?.id.replace('screen-', '') || 'upload';
+    if (lastClipScreen === 'processing') lastClipScreen = 'upload';
+    video.pause();
+    show('montage');
+    if (!montage) {
+      montage = await import('./montage.js');
+      montage.initMontage({ toast, notify });
+    }
+  } else {
+    montage?.leaveMontage();
+    show(state.clips.length && lastClipScreen === 'results' ? 'results' : lastClipScreen);
+  }
+});
 
 // Accès de débogage depuis la console du navigateur.
 window.clipforge = { state, env };

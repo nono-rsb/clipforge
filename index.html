@@ -6,7 +6,7 @@
   <title>ClipForge — Clips viraux automatiques</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@800;900&family=Anton&family=Bangers&family=Poppins:wght@800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -26,6 +26,10 @@
   </script>
   <header class="topbar">
     <div class="logo"><span class="logo-mark">✂</span><span>Clip<b>Forge</b></span></div>
+    <nav class="modes" id="modes">
+      <button data-mode="clip" class="on">✂ Clipping</button>
+      <button data-mode="montage">🎬 Montage</button>
+    </nav>
     <div class="top-actions">
       <span class="pill-soft">100 % local · aucune vidéo envoyée</span>
     </div>
@@ -145,7 +149,7 @@
         <div><b>🧠 Détection des temps forts</b><span>Énergie de la voix, rythme, accroches, mots-clés</span></div>
         <div><b>📈 Score de viralité</b><span>Chaque clip noté sur 99 avec ses points forts</span></div>
         <div><b>👤 Suivi des visages</b><span>Le 9:16 reste centré sur la personne qui parle</span></div>
-        <div><b>💬 Sous-titres animés</b><span>Karaoké mot à mot, 5 styles</span></div>
+        <div><b>💬 Sous-titres animés</b><span>8 styles, 4 polices, couleur au choix</span></div>
       </div>
     </section>
 
@@ -181,12 +185,93 @@
           <select id="sortBy">
             <option value="score">Trier : score</option>
             <option value="time">Trier : chronologique</option>
+            <option value="length">Trier : durée</option>
           </select>
           <button id="newVideo" class="btn ghost">Nouvelle vidéo</button>
           <button id="exportAll" class="btn primary">⬇ Tout exporter</button>
         </div>
       </div>
+      <div class="results-tools">
+        <input id="searchText" type="search" placeholder="🔎 Chercher un mot ou une phrase dans la vidéo… (Entrée)" autocomplete="off">
+        <label class="minscore"><span>Score min <b id="minScoreVal">48</b></span><input type="range" id="minScore" min="48" max="99" value="48"></label>
+        <button id="addClip" class="btn ghost sm">＋ Clip manuel</button>
+      </div>
+      <div id="searchResults" class="search-results hidden"></div>
       <div id="clipGrid" class="clip-grid"></div>
+    </section>
+
+    <!-- MONTAGE -->
+    <section id="screen-montage" class="screen">
+      <div class="mt-head">
+        <div>
+          <h2>Montage</h2>
+          <p class="muted">Assemble plusieurs vidéos, coupe, retire les silences, ajoute textes et musique.</p>
+        </div>
+        <div class="mt-actions">
+          <div class="chips" id="mtAspect">
+            <button data-v="16:9">16:9</button><button data-v="9:16">9:16</button><button data-v="1:1">1:1</button><button data-v="4:5">4:5</button>
+          </div>
+          <select id="mtQuality"><option value="1080">1080p</option><option value="720">720p</option></select>
+          <button id="mtExport" class="btn primary" disabled>⬇ Exporter la vidéo</button>
+        </div>
+      </div>
+      <div class="mt-body">
+        <aside class="panel mt-bin">
+          <h3>Médias</h3>
+          <button id="mtAdd" class="btn ghost sm wide">＋ Ajouter des vidéos</button>
+          <input id="mtInput" type="file" accept="video/*" multiple hidden>
+          <div id="mtMedia" class="mt-media"></div>
+          <h3>Musique</h3>
+          <div class="music-row">
+            <button id="mtMusic" class="btn ghost sm">🎵 Choisir</button>
+            <span id="mtMusicName" class="muted">Aucune</span>
+            <button id="mtMusicOff" class="btn ghost sm icon hidden" title="Retirer">✕</button>
+            <input id="mtMusicInput" type="file" accept="audio/*" hidden>
+          </div>
+          <div class="field"><div class="label">Volume de la musique</div><input type="range" id="mtMusicVol" min="0" max="1" step="0.01" value="0.2"></div>
+          <h3>Silences</h3>
+          <div class="field"><div class="label">Seuil <b id="mtSilThrV">22 %</b></div><input type="range" id="mtSilThr" min="0.05" max="0.5" step="0.01" value="0.22"></div>
+          <div class="field"><div class="label">Silence minimum <b id="mtSilMinV">0.6 s</b></div><input type="range" id="mtSilMin" min="0.3" max="2" step="0.1" value="0.6"></div>
+          <div class="btn-row">
+            <button id="mtSilence" class="btn ghost sm">✂ Segment choisi</button>
+            <button id="mtSilenceAll" class="btn ghost sm">✂ Toute la vidéo</button>
+          </div>
+        </aside>
+
+        <div class="mt-stage">
+          <div class="mt-preview">
+            <canvas id="mtCanvas"></canvas>
+            <button id="mtEmpty" class="mt-empty"><span class="dz-icon">⬆</span><b>Ajoute ou glisse tes vidéos ici</b><small>Elles s'enchaînent sur la timeline, dans l'ordre</small></button>
+          </div>
+          <div class="player">
+            <button id="mtPlay" class="round">▶</button>
+            <span id="mtCur" class="mono">0:00</span><span class="muted">/</span><span id="mtTotal" class="mono">0:00</span>
+            <div class="mt-tools">
+              <button id="mtSplit" class="btn ghost sm" title="Couper à la tête de lecture (S)">✂ Couper</button>
+              <button id="mtDelete" class="btn ghost sm icon" title="Supprimer (Suppr)">🗑</button>
+              <button id="mtLeft" class="btn ghost sm icon" title="Déplacer vers la gauche">◀</button>
+              <button id="mtRight" class="btn ghost sm icon" title="Déplacer vers la droite">▶</button>
+              <button id="mtDup" class="btn ghost sm icon" title="Dupliquer (Ctrl+D)">⧉</button>
+              <button id="mtText" class="btn ghost sm" title="Ajouter un texte (T)">T Texte</button>
+              <button id="mtUndo" class="btn ghost sm icon" title="Annuler (Ctrl+Z)">↶</button>
+              <button id="mtRedo" class="btn ghost sm icon" title="Rétablir (Ctrl+Y)">↷</button>
+            </div>
+            <button id="mtMute" class="round sm" title="Son">🔊</button>
+          </div>
+          <div class="mt-zoom"><span class="muted">Zoom</span><input type="range" id="mtZoom" min="2" max="200" value="40"></div>
+          <div id="mtTimeline" class="mt-timeline">
+            <div id="mtInner" class="mt-inner">
+              <div id="mtRuler" class="mt-ruler"></div>
+              <div id="mtTrack" class="mt-track"></div>
+              <div id="mtTexts" class="mt-texts"></div>
+              <div id="mtPlayhead" class="mt-playhead"></div>
+            </div>
+          </div>
+          <p class="ed-keys muted">Raccourcis : <kbd>Espace</kbd> lecture · <kbd>S</kbd> couper · <kbd>Suppr</kbd> supprimer · <kbd>T</kbd> texte · <kbd>←</kbd><kbd>→</kbd> ±1 s · <kbd>Ctrl+Z</kbd> annuler · glisser un segment pour le déplacer</p>
+        </div>
+
+        <aside id="mtInspect" class="panel mt-inspect"></aside>
+      </div>
     </section>
   </main>
 
@@ -198,6 +283,7 @@
       <div class="ed-score" id="edScore"></div>
       <button id="edExport" class="btn primary">⬇ Exporter</button>
     </div>
+    <div class="ed-keys muted">Raccourcis : <kbd>Espace</kbd> lecture · <kbd>←</kbd><kbd>→</kbd> ±1 s (<kbd>Maj</kbd> ±5 s) · <kbd>I</kbd> / <kbd>O</kbd> début / fin ici · <kbd>M</kbd> son · <kbd>Échap</kbd> fermer</div>
     <div class="ed-body">
       <div class="ed-stage">
         <div class="stage-wrap" id="stageWrap"><canvas id="preview"></canvas></div>
@@ -215,6 +301,7 @@
           <button data-tab="trim" class="on">Découpe</button>
           <button data-tab="frame">Cadrage</button>
           <button data-tab="subs">Sous-titres</button>
+          <button data-tab="fx">Effets</button>
           <button data-tab="hook">Accroche</button>
         </div>
 
@@ -289,6 +376,22 @@
             <div class="label">Style</div>
             <div class="style-grid" id="styleGrid"></div>
           </div>
+          <div class="row2">
+            <div class="field">
+              <div class="label">Police</div>
+              <select id="capFont"></select>
+            </div>
+            <div class="field">
+              <div class="label">Couleur du mot actif</div>
+              <div class="color-row"><input type="color" id="capColor"><button class="btn ghost sm" id="capColorReset" title="Couleur du style">↺</button></div>
+            </div>
+          </div>
+          <div class="field">
+            <div class="label">Mots affichés à la fois</div>
+            <div class="chips" data-optnum="maxWords">
+              <button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button>
+            </div>
+          </div>
           <div class="field">
             <div class="label">Taille</div>
             <input type="range" id="capSize" min="0.6" max="1.6" step="0.05">
@@ -306,20 +409,85 @@
             <input type="checkbox" data-bool="emojis"><span class="switch"></span>
           </label>
           <div class="field">
+            <div class="label">Taille des emojis</div>
+            <input type="range" id="emojiSize" min="0.5" max="1.8" step="0.05">
+          </div>
+          <div class="field">
             <div class="label">Texte (corrigez les erreurs de transcription)</div>
             <textarea id="edText" rows="7" spellcheck="true" placeholder="Aucune transcription — activez « Sous-titres IA » à l'import, ou tapez le texte ici."></textarea>
           </div>
-          <button class="btn ghost sm" id="applyAll">Appliquer ce style à tous les clips</button>
+          <div class="btn-row">
+            <button class="btn ghost sm" id="applyAll">Appliquer ce style à tous les clips</button>
+            <button class="btn ghost sm" id="exportSrt">⬇ Sous-titres .srt</button>
+          </div>
+        </div>
+
+        <div class="tab-pane" data-pane="fx">
+          <div class="field">
+            <div class="label">Filtre couleur</div>
+            <div class="chips" data-opt="filter" id="filterChips"></div>
+          </div>
+          <div class="field">
+            <div class="label">Vitesse</div>
+            <div class="chips" data-optnum="speed">
+              <button data-v="1">1×</button><button data-v="1.1">1,1×</button><button data-v="1.25">1,25×</button><button data-v="1.5">1,5×</button>
+            </div>
+            <small class="muted">Accélérer un peu garde l'attention ; la voix garde son ton.</small>
+          </div>
+          <div class="field">
+            <div class="label">Volume de la voix <b id="volumeVal"></b></div>
+            <input type="range" id="volume" min="0" max="2" step="0.05">
+          </div>
+          <label class="switch-row">
+            <span><span class="label">Fondu d'entrée et de sortie</span><small>Image et son, 0,4 s</small></span>
+            <input type="checkbox" data-bool="fade"><span class="switch"></span>
+          </label>
+          <div class="field">
+            <div class="label">Musique de fond</div>
+            <div class="music-row">
+              <button class="btn ghost sm" id="musicPick">🎵 Choisir un fichier audio</button>
+              <span id="musicName" class="muted"></span>
+              <input type="file" id="musicInput" accept="audio/*" hidden>
+            </div>
+          </div>
+          <label class="switch-row">
+            <span class="label">Musique sur ce clip</span>
+            <input type="checkbox" data-bool="music"><span class="switch"></span>
+          </label>
+          <div class="field">
+            <div class="label">Volume de la musique <b id="musicVolVal"></b></div>
+            <input type="range" id="musicVol" min="0" max="1" step="0.01">
+          </div>
+          <div class="field">
+            <div class="label">Filigrane (ton pseudo)</div>
+            <input type="text" id="watermark" class="input" placeholder="@tonpseudo" maxlength="40">
+          </div>
         </div>
 
         <div class="tab-pane" data-pane="hook">
           <label class="switch-row">
-            <span><span class="label">Titre d'accroche</span><small>Affiché pendant les 3 premières secondes</small></span>
+            <span><span class="label">Titre d'accroche</span><small>Affiché au début du clip</small></span>
             <input type="checkbox" data-bool="hook"><span class="switch"></span>
           </label>
           <div class="field">
             <div class="label">Texte de l'accroche</div>
             <textarea id="hookText" rows="3" placeholder="Laissez vide pour utiliser le titre du clip"></textarea>
+          </div>
+          <div class="field">
+            <div class="label">Couleurs</div>
+            <div class="chips" data-opt="hookTheme">
+              <button data-v="light">⬜ Blanc</button><button data-v="dark">⬛ Noir</button><button data-v="accent">🟨 Jaune</button>
+            </div>
+          </div>
+          <div class="field">
+            <div class="label">Durée d'affichage</div>
+            <div class="chips" data-optnum="hookDur">
+              <button data-v="2">2 s</button><button data-v="3">3 s</button><button data-v="5">5 s</button>
+            </div>
+          </div>
+          <div class="field">
+            <div class="label">Miniature</div>
+            <button class="btn ghost sm" id="exportThumb">🖼 Enregistrer l'image affichée (PNG)</button>
           </div>
           <div class="field">
             <div class="label">Qualité d'export</div>

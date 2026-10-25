@@ -18,6 +18,38 @@ export const CAPTION_STYLES = {
   impact: { label: 'Impact', accent: '#00E676' },
   neon: { label: 'Néon', accent: '#3DF5FF' },
   minimal: { label: 'Minimal', accent: '#FFFFFF' },
+  pop: { label: 'Mot à mot', accent: '#FFE600' },
+  beast: { label: 'Beast', accent: '#FF2D2D' },
+  retro: { label: 'Rétro', accent: '#FF4FD8' },
+};
+
+// Polices des sous-titres : [graisse, famille] (chargées par Google Fonts dans index.html).
+export const CAPTION_FONTS = {
+  montserrat: { label: 'Montserrat', weight: 900, family: 'Montserrat' },
+  anton: { label: 'Anton', weight: 400, family: 'Anton' },
+  bangers: { label: 'Bangers', weight: 400, family: 'Bangers' },
+  poppins: { label: 'Poppins', weight: 800, family: 'Poppins' },
+};
+export const fontSpec = (key, size, minimal = false) => {
+  const f = CAPTION_FONTS[key] || CAPTION_FONTS.montserrat;
+  const w = f.family === 'Montserrat' && minimal ? 800 : f.weight;
+  return `${w} ${size}px "${f.family}", "Arial Black", Impact, sans-serif`;
+};
+
+// Filtres couleur appliqués à la vidéo (syntaxe CSS de ctx.filter).
+export const FILTERS = {
+  none: { label: 'Aucun', css: 'none' },
+  vivid: { label: 'Vif', css: 'saturate(1.35) contrast(1.08)' },
+  cinema: { label: 'Cinéma', css: 'contrast(1.15) saturate(0.85) sepia(0.12)' },
+  warm: { label: 'Chaud', css: 'sepia(0.25) saturate(1.2) hue-rotate(-8deg)' },
+  cool: { label: 'Froid', css: 'saturate(1.05) hue-rotate(12deg) brightness(1.03)' },
+  bw: { label: 'N&B', css: 'grayscale(1) contrast(1.15)' },
+};
+
+export const HOOK_THEMES = {
+  light: { bg: '#fff', fg: '#111' },
+  dark: { bg: '#111', fg: '#fff' },
+  accent: { bg: '#FFE600', fg: '#111' },
 };
 
 // Regroupe les mots en petites "bouchées" de 1 à 3 mots, comme les shorts viraux.
@@ -45,6 +77,8 @@ export function renderFrame(ctx, video, clip, t, env) {
   ctx.fillRect(0, 0, W, H);
   const vw = video.videoWidth, vh = video.videoHeight;
   if (vw) {
+    ctx.save();
+    ctx.filter = FILTERS[o.filter]?.css || 'none';
     const auto = o.reframe === 'auto';
     const duo = env.track.duo;
     const podcast = auto && o.layout === 'fill' && o.podcast && o.podcast !== 'off' && duo?.has(t);
@@ -60,16 +94,41 @@ export function renderFrame(ctx, video, clip, t, env) {
       if (o.layout === 'fit') drawFit(ctx, video, vw, vh, W, H, o, cx);
       else drawFill(ctx, video, vw, vh, W, H, o.zoom, cx, cy);
     }
+    ctx.restore();
   }
   if (o.captions && clip.groups?.length) drawCaptions(ctx, clip.groups, t, o, W, H);
-  if (o.hook) drawHook(ctx, o.hookText || clip.title, t - clip.start, W, H);
+  if (o.hook) drawHook(ctx, o.hookText || clip.title, t - clip.start, W, H, o);
+  if (o.watermark) drawWatermark(ctx, o.watermark, W, H);
   if (o.progress) {
     const p = clamp01((t - clip.start) / (clip.end - clip.start));
     ctx.fillStyle = 'rgba(255,255,255,.25)';
     ctx.fillRect(0, H - H * 0.008, W, H * 0.008);
-    ctx.fillStyle = CAPTION_STYLES[o.capStyle]?.accent === '#FFFFFF' ? '#7C5CFF' : CAPTION_STYLES[o.capStyle].accent;
+    const acc = accentOf(o);
+    ctx.fillStyle = acc.toUpperCase() === '#FFFFFF' ? '#7C5CFF' : acc;
     ctx.fillRect(0, H - H * 0.008, W * p, H * 0.008);
   }
+  if (o.fade) {
+    // Fondu au noir sur les 0,4 premières et dernières secondes.
+    const d = 0.4 * (o.speed || 1);
+    const a = Math.max(1 - (t - clip.start) / d, 1 - (clip.end - t) / d);
+    if (a > 0) { ctx.fillStyle = `rgba(0,0,0,${clamp01(a)})`; ctx.fillRect(0, 0, W, H); }
+  }
+  ctx.restore();
+}
+
+const accentOf = o => o.capColor || CAPTION_STYLES[o.capStyle]?.accent || '#FFE600';
+
+function drawWatermark(ctx, text, W, H) {
+  const size = Math.round(Math.min(W, H * 0.75) * 0.032);
+  ctx.save();
+  ctx.font = `700 ${size}px Inter, Arial, sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.globalAlpha = 0.7;
+  ctx.shadowColor = 'rgba(0,0,0,.6)';
+  ctx.shadowBlur = size * 0.4;
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, W - size, H - size * 1.4);
   ctx.restore();
 }
 
@@ -152,14 +211,14 @@ function drawCaptions(ctx, groups, t, o, W, H) {
   if (!g) return;
   const base = Math.round(Math.min(W, H * 0.75) * 0.092 * o.capSize);
   const minimal = o.capStyle === 'minimal';
-  ctx.font = `${minimal ? 800 : 900} ${base}px Montserrat, "Arial Black", Impact, sans-serif`;
+  ctx.font = fontSpec(o.capFont, base, minimal);
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
   ctx.lineJoin = 'round';
   const toks = g.words.map(w => ({ w, text: o.uppercase ? w.w.toUpperCase() : w.w }));
   toks.forEach(k => { k.width = ctx.measureText(k.text).width; });
   // Le style Impact grossit le mot actif : on espace davantage pour qu'il ne touche pas ses voisins.
-  const space = base * (o.capStyle === 'impact' ? 0.45 : 0.28), maxW = W * 0.86;
+  const space = base * (o.capStyle === 'impact' || o.capStyle === 'beast' ? 0.45 : 0.28), maxW = W * 0.86;
   const lines = [[]];
   let lw = 0;
   for (const k of toks) {
@@ -172,7 +231,7 @@ function drawCaptions(ctx, groups, t, o, W, H) {
   ctx.save();
   ctx.translate(W / 2, H * o.capPos);
   ctx.scale(sc, sc);
-  const accent = CAPTION_STYLES[o.capStyle]?.accent || '#FFE600';
+  const accent = accentOf(o);
   lines.forEach((line, li) => {
     const width = line.reduce((a, k, i) => a + k.width + (i ? space : 0), 0);
     const y = (li - (lines.length - 1) / 2) * base * 1.18;
@@ -180,7 +239,14 @@ function drawCaptions(ctx, groups, t, o, W, H) {
     line.forEach((k, i) => {
       const next = g.words[g.words.indexOf(k.w) + 1];
       const active = t >= k.w.s && (next ? t < next.s : t < k.w.e + 0.6);
-      drawWord(ctx, o.capStyle, k.text, x, y, k.width, base, active, accent);
+      // « Mot à mot » : les mots apparaissent au fur et à mesure qu'ils sont prononcés.
+      if (o.capStyle !== 'pop' || t >= k.w.s - 0.02) {
+        const pop = o.capStyle === 'pop' ? 0.7 + 0.3 * (1 - (1 - clamp01((t - k.w.s) / 0.12)) ** 3) : 1;
+        ctx.save();
+        if (pop !== 1) { ctx.translate(x + k.width / 2, y); ctx.scale(pop, pop); ctx.translate(-(x + k.width / 2), -y); }
+        drawWord(ctx, o.capStyle, k.text, x, y, k.width, base, active, accent);
+        ctx.restore();
+      }
       x += k.width + space;
     });
   });
@@ -190,7 +256,7 @@ function drawCaptions(ctx, groups, t, o, W, H) {
     const emo = (cur && wordEmoji(cur)) || g.words.map(wordEmoji).find(Boolean);
     if (emo) {
       const pop = 1 - (1 - clamp01((t - g.s) / 0.18)) ** 3;
-      const size = base * 1.7;
+      const size = base * 1.7 * (o.emojiSize || 1);
       const ey = -((lines.length - 1) / 2) * base * 1.18 - base * 1.55;
       ctx.save();
       ctx.translate(0, ey);
@@ -214,7 +280,7 @@ function drawWord(ctx, style, text, x, y, w, base, active, accent) {
     roundRect(ctx, x - base * 0.14, y - base * 0.62, w + base * 0.28, base * 1.18, base * 0.2);
     ctx.fill();
   }
-  if (style === 'impact' && active) {
+  if ((style === 'impact' || style === 'beast') && active) {
     ctx.translate(x + w / 2, y);
     ctx.scale(1.12, 1.12);
     ctx.translate(-(x + w / 2), -y);
@@ -229,8 +295,13 @@ function drawWord(ctx, style, text, x, y, w, base, active, accent) {
     ctx.restore();
     return;
   }
+  if (style === 'retro') {
+    // Ombre portée franche, façon affiche.
+    ctx.fillStyle = '#000';
+    ctx.fillText(text, x + base * 0.08, y + base * 0.09);
+  }
   ctx.strokeStyle = '#000';
-  ctx.lineWidth = base * (style === 'impact' ? 0.22 : 0.16);
+  ctx.lineWidth = base * (style === 'impact' ? 0.22 : style === 'beast' ? 0.28 : 0.16);
   ctx.strokeText(text, x, y);
   if (style === 'neon' && active) { ctx.shadowColor = accent; ctx.shadowBlur = base * 0.5; }
   ctx.fillStyle = active && style !== 'box' ? accent : '#fff';
@@ -238,9 +309,11 @@ function drawWord(ctx, style, text, x, y, w, base, active, accent) {
   ctx.restore();
 }
 
-function drawHook(ctx, text, dt, W, H) {
-  if (!text || dt < 0 || dt > 3.2) return;
-  const alpha = dt > 2.8 ? (3.2 - dt) / 0.4 : clamp01(dt / 0.2);
+function drawHook(ctx, text, dt, W, H, o = {}) {
+  const dur = (o.hookDur || 3) * (o.speed || 1) + 0.2;
+  if (!text || dt < 0 || dt > dur) return;
+  const alpha = dt > dur - 0.4 ? (dur - dt) / 0.4 : clamp01(dt / 0.2);
+  const theme = HOOK_THEMES[o.hookTheme] || HOOK_THEMES.light;
   const size = Math.round(Math.min(W, H * 0.75) * 0.046);
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -263,11 +336,11 @@ function drawHook(ctx, text, dt, W, H) {
   const y0 = H * 0.1 + (1 - alpha) * -size;
   ctx.shadowColor = 'rgba(0,0,0,.35)';
   ctx.shadowBlur = size * 0.6;
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = theme.bg;
   roundRect(ctx, (W - bw) / 2, y0, bw, bh, size * 0.45);
   ctx.fill();
   ctx.shadowBlur = 0;
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = theme.fg;
   lines.forEach((l, i) => ctx.fillText(l, W / 2, y0 + pad * 0.6 + lh * (i + 0.5)));
   ctx.restore();
 }

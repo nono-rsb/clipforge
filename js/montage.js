@@ -1,0 +1,767 @@
+// Montage de vidéos longues : plusieurs vidéos sur une timeline, coupe, réorganisation,
+// suppression automatique des silences, textes, musique, transitions, export.
+// Tout se joue en direct sur un canvas ; l'export enregistre ce rendu (comme pour les clips).
+import { clamp, clamp01, fmtTime, seekTo, decodeAudio, computeEnergy } from './analyzer.js';
+import { FILTERS } from './renderer.js';
+import { pickMime, outputSize } from './exporter.js';
+
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const COLORS = ['#7c5cff', '#ff4fd8', '#22d38a', '#ffb020', '#3df5ff', '#ff5470'];
+const FADE = 0.35;
+const HOP = 0.05;
+
+const M = {
+  media: [], segs: [], texts: [],
+  sel: null, // { kind: 'seg' | 'text', id }
+  t: 0, playing: false, k: -1,
+  aspect: '16:9', quality: '1080', zoom: 40, // pixels par seconde sur la timeline
+  music: null, musicVol: 0.2,
+  exporting: false,
+  undo: [], redo: [],
+};
+
+let ui = null; // toast / notify fournis par app.js
+let ac = null, master = null, speaker = null, recDest = null, musicEl = null, musicGain = null;
+const canvas = $('#mtCanvas');
+const ctx = canvas.getContext('2d');
+const bg = document.createElement('canvas');
+const bgx = bg.getContext('2d');
+let uid = 0;
+const id = p => `${p}${(++uid).toString(36)}`;
+
+/* ---------------- Audio ---------------- */
+
+function audio() {
+  if (ac) return ac;
+  ac = new AudioContext();
+  master = ac.createGain();
+  speaker = ac.createGain();
+  recDest = ac.createMediaStreamDestination();
+  master.connect(speaker).connect(ac.destination);
+  master.connect(recDest);
+  musicEl = new Audio();
+  musicEl.loop = true;
+  musicGain = ac.createGain();
+  ac.createMediaElementSource(musicEl).connect(musicGain).connect(master);
+  M.media.forEach(wire);
+  return ac;
+}
+
+function wire(m) {
+  if (!ac || m.gains) return;
+  m.gains = m.els.map(el => {
+    const g = ac.createGain();
+    ac.createMediaElementSource(el).connect(g).connect(master);
+    return g;
+  });
+}
+
+/* ---------------- Médias ---------------- */
+
+async function addFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith('video/') && !/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)) continue;
+    const url = URL.createObjectURL(f);
+    const els = [0, 1].map(() => {
+      const v = document.createElement('video');
+      v.src = url; v.preload = 'auto'; v.playsInline = true; v.crossOrigin = 'anonymous';
+      v.className = 'offscreen-video';
+      document.body.append(v);
+      return v;
+    });
+    try {
+      await new Promise((res, rej) => { els[0].onloadedmetadata = res; els[0].onerror = rej; });
+    } catch {
+      ui.toast(`« ${f.name} » n'est pas lisible par le navigateur (essaie un MP4 H.264).`, 'err', 7000);
+      els.forEach(v => v.remove());
+      continue;
+    }
+    const m = {
+      id: id('m'), name: f.name, file: f, url, els, duration: els[0].duration,
+      w: els[0].videoWidth, h: els[0].videoHeight, color: COLORS[M.media.length % COLORS.length], thumb: '', energy: null,
+    };
+    M.media.push(m);
+    wire(m);
+    m.thumb = await thumbnail(m);
+    snapshot();
+    M.segs.push(newSeg(m, 0, m.duration));
+    if (M.segs.length === 1) M.aspect = m.w >= m.h ? '16:9' : '9:16';
+  }
+  render();
+  seek(M.t);
+}
+
+async function thumbnail(m) {
+  const v = m.els[1];
+  await seekTo(v, Math.min(1, m.duration / 2));
+  const c = document.createElement('canvas');
+  c.width = 160; c.height = Math.round(160 * m.h / m.w) || 90;
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.7);
+}
+
+const newSeg = (m, a, b, base = {}) => ({
+  speed: 1, vol: 1, filter: 'none', trans: 'none', layout: 'fill', ...base, id: id('s'), mid: m.id, a, b,
+});
+const mediaOf = s => M.media.find(m => m.id === s.mid);
+const segDur = s => (s.b - s.a) / s.speed;
+const total = () => M.segs.reduce((a, s) => a + segDur(s), 0);
+const elFor = k => mediaOf(M.segs[k]).els[k % 2];
+const gainFor = k => mediaOf(M.segs[k]).gains?.[k % 2];
+
+function startOf(k) {
+  let t = 0;
+  for (let i = 0; i < k; i++) t += segDur(M.segs[i]);
+  return t;
+}
+
+function locate(T) {
+  let t = 0;
+  for (let k = 0; k < M.segs.length; k++) {
+    const d = segDur(M.segs[k]);
+    if (T < t + d || k === M.segs.length - 1) return { k, local: clamp(T - t, 0, d) };
+    t += d;
+  }
+  return { k: -1, local: 0 };
+}
+
+/* ---------------- Historique (annuler / rétablir) ---------------- */
+
+function snapshot() {
+  M.undo.push(JSON.stringify({ segs: M.segs, texts: M.texts }));
+  if (M.undo.length > 60) M.undo.shift();
+  M.redo = [];
+}
+function restore(from, to) {
+  if (!from.length) return;
+  to.push(JSON.stringify({ segs: M.segs, texts: M.texts }));
+  ({ segs: M.segs, texts: M.texts } = JSON.parse(from.pop()));
+  M.sel = null;
+  render();
+  seek(Math.min(M.t, total()));
+}
+const undo = () => restore(M.undo, M.redo);
+const redo = () => restore(M.redo, M.undo);
+
+/* ---------------- Lecture ---------------- */
+
+function seek(T) {
+  pause();
+  M.t = clamp(T, 0, total());
+  const { k, local } = locate(M.t);
+  M.k = k;
+  if (k < 0) { draw(); return; }
+  const s = M.segs[k], el = elFor(k);
+  seekTo(el, s.a + local * s.speed).then(draw);
+  prepare(k + 1);
+  draw();
+}
+
+// Positionne à l'avance la vidéo du segment suivant pour une coupe sans à-coup.
+function prepare(k) {
+  if (k >= M.segs.length) return;
+  const el = elFor(k);
+  if (el.paused) el.currentTime = M.segs[k].a;
+}
+
+async function play() {
+  if (!M.segs.length) return;
+  audio();
+  await ac.resume();
+  if (M.t >= total() - 0.05) M.t = 0;
+  const { k, local } = locate(M.t);
+  M.playing = true;
+  await startSeg(k, local);
+  if (M.music) { musicEl.currentTime = M.music.duration ? M.t % M.music.duration : 0; musicEl.play().catch(() => {}); }
+  $('#mtPlay').textContent = '❚❚';
+}
+
+async function startSeg(k, local = 0) {
+  M.k = k;
+  const s = M.segs[k], el = elFor(k);
+  el.playbackRate = s.speed;
+  el.preservesPitch = true;
+  if (Math.abs(el.currentTime - (s.a + local * s.speed)) > 0.15) await seekTo(el, s.a + local * s.speed);
+  if (!M.playing) return;
+  await el.play().catch(() => {});
+  prepare(k + 1);
+}
+
+function pause() {
+  M.playing = false;
+  M.media.forEach(m => m.els.forEach(v => v.pause()));
+  musicEl?.pause();
+  $('#mtPlay').textContent = '▶';
+}
+
+function tick() {
+  requestAnimationFrame(tick);
+  if (!M.playing || M.k < 0) return;
+  const s = M.segs[M.k], el = elFor(M.k);
+  if (el.currentTime >= s.b - 0.02 || el.ended) {
+    el.pause();
+    if (M.k + 1 >= M.segs.length) { M.t = total(); pause(); finishExport(); draw(); return; }
+    M.t = startOf(M.k + 1);
+    startSeg(M.k + 1);
+    return;
+  }
+  M.t = startOf(M.k) + (el.currentTime - s.a) / s.speed;
+  draw();
+}
+
+/* ---------------- Rendu ---------------- */
+
+function sizeCanvas(quality) {
+  const [W, H] = outputSize(M.aspect, quality);
+  const k = quality === 'preview' ? 960 / Math.max(W, H) : 1;
+  const w = Math.round(W * k), h = Math.round(H * k);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+
+function draw() {
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (M.k >= 0 && M.segs[M.k]) {
+    const s = M.segs[M.k], el = elFor(M.k);
+    const local = M.t - startOf(M.k), d = segDur(s);
+    if (el.videoWidth) {
+      ctx.save();
+      ctx.filter = FILTERS[s.filter]?.css || 'none';
+      if (s.layout === 'fit') drawFit(el, W, H); else drawFill(el, W, H);
+      ctx.restore();
+    }
+    // Transition « fondu » : noir à l'entrée de ce segment et à la sortie du précédent.
+    const next = M.segs[M.k + 1];
+    let black = 0;
+    if (s.trans === 'fade' && M.k > 0) black = Math.max(black, 1 - local / FADE);
+    if (next?.trans === 'fade') black = Math.max(black, 1 - (d - local) / FADE);
+    if (M.k === 0 && M.fadeIn) black = Math.max(black, 1 - local / (FADE * 2));
+    if (!next && M.fadeOut) black = Math.max(black, 1 - (d - local) / (FADE * 2));
+    black = clamp01(black);
+    if (black > 0) { ctx.fillStyle = `rgba(0,0,0,${black})`; ctx.fillRect(0, 0, W, H); }
+    const g = gainFor(M.k);
+    if (g) g.gain.value = s.vol * (1 - black);
+  }
+  M.texts.forEach(tx => { if (M.t >= tx.t && M.t <= tx.t + tx.dur) drawText(tx, W, H); });
+  if (musicGain) musicGain.gain.value = M.music ? M.musicVol : 0;
+  $('#mtCur').textContent = fmtTime(M.t);
+  $('#mtTotal').textContent = fmtTime(total());
+  const ph = $('#mtPlayhead');
+  ph.style.left = `${M.t * M.zoom}px`;
+  if (M.playing) {
+    const tl = $('#mtTimeline');
+    const x = M.t * M.zoom;
+    if (x < tl.scrollLeft || x > tl.scrollLeft + tl.clientWidth - 40) tl.scrollLeft = x - 40;
+  }
+}
+
+function drawFill(el, W, H) {
+  const vw = el.videoWidth, vh = el.videoHeight, r = W / H;
+  let sw = vw, sh = vh;
+  if (vw / vh > r) sw = vh * r; else sh = vw / r;
+  ctx.drawImage(el, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, W, H);
+}
+
+function drawFit(el, W, H) {
+  const vw = el.videoWidth, vh = el.videoHeight;
+  const bw = 54, bh = Math.max(8, Math.round(bw * H / W));
+  if (bg.width !== bw || bg.height !== bh) { bg.width = bw; bg.height = bh; }
+  bgx.filter = 'blur(2px)';
+  bgx.drawImage(el, -2, -2, bw + 4, bh + 4);
+  ctx.drawImage(bg, 0, 0, W, H);
+  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  ctx.fillRect(0, 0, W, H);
+  const sc = Math.min(W / vw, H / vh);
+  ctx.drawImage(el, (W - vw * sc) / 2, (H - vh * sc) / 2, vw * sc, vh * sc);
+}
+
+export const TEXT_STYLES = {
+  title: 'Titre',
+  box: 'Encadré',
+  lower: 'Bandeau',
+};
+
+function drawText(tx, W, H) {
+  const dt = M.t - tx.t;
+  const alpha = Math.min(clamp01(dt / 0.25), clamp01((tx.dur - dt) / 0.25));
+  const size = Math.round(Math.min(W, H) * 0.075 * tx.size);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `900 ${size}px Montserrat, "Arial Black", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const lines = tx.text.split('\n').slice(0, 4);
+  const lh = size * 1.2;
+  const y0 = H * tx.y - ((lines.length - 1) * lh) / 2;
+  const wMax = Math.max(...lines.map(l => ctx.measureText(l).width));
+  if (tx.style === 'box' || tx.style === 'lower') {
+    const pad = size * 0.45;
+    const bw = tx.style === 'lower' ? W : wMax + pad * 2;
+    ctx.fillStyle = tx.style === 'lower' ? 'rgba(124,92,255,.92)' : '#fff';
+    ctx.beginPath();
+    ctx.roundRect?.((W - bw) / 2, y0 - lh / 2 - pad * 0.5, bw, lines.length * lh + pad, tx.style === 'lower' ? 0 : size * 0.3);
+    ctx.fill();
+    ctx.fillStyle = tx.style === 'lower' ? '#fff' : '#111';
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, y0 + i * lh));
+  } else {
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = size * 0.16;
+    ctx.strokeStyle = '#000';
+    ctx.fillStyle = tx.color || '#fff';
+    lines.forEach((l, i) => { ctx.strokeText(l, W / 2, y0 + i * lh); ctx.fillText(l, W / 2, y0 + i * lh); });
+  }
+  ctx.restore();
+}
+
+/* ---------------- Édition ---------------- */
+
+function selected() {
+  if (!M.sel) return null;
+  return (M.sel.kind === 'seg' ? M.segs : M.texts).find(x => x.id === M.sel.id) || null;
+}
+
+function split() {
+  const { k, local } = locate(M.t);
+  if (k < 0) return;
+  const s = M.segs[k];
+  const at = s.a + local * s.speed;
+  if (at - s.a < 0.2 || s.b - at < 0.2) { ui.toast('Place la tête de lecture plus loin du bord du segment.', '', 2500); return; }
+  snapshot();
+  const right = { ...s, id: id('s'), a: at, trans: 'none' };
+  s.b = at;
+  M.segs.splice(k + 1, 0, right);
+  M.sel = { kind: 'seg', id: right.id };
+  render();
+  seek(M.t);
+}
+
+function remove() {
+  const x = selected();
+  if (!x) return;
+  snapshot();
+  if (M.sel.kind === 'seg') M.segs.splice(M.segs.indexOf(x), 1);
+  else M.texts.splice(M.texts.indexOf(x), 1);
+  M.sel = null;
+  render();
+  seek(Math.min(M.t, total()));
+}
+
+function move(d) {
+  const x = selected();
+  if (!x || M.sel.kind !== 'seg') return;
+  const i = M.segs.indexOf(x), j = i + d;
+  if (j < 0 || j >= M.segs.length) return;
+  snapshot();
+  [M.segs[i], M.segs[j]] = [M.segs[j], M.segs[i]];
+  render();
+  seek(startOf(j));
+}
+
+function duplicate() {
+  const x = selected();
+  if (!x) return;
+  snapshot();
+  if (M.sel.kind === 'seg') {
+    const c = { ...x, id: id('s') };
+    M.segs.splice(M.segs.indexOf(x) + 1, 0, c);
+    M.sel = { kind: 'seg', id: c.id };
+  } else {
+    const c = { ...x, id: id('t'), t: x.t + x.dur };
+    M.texts.push(c);
+    M.sel = { kind: 'text', id: c.id };
+  }
+  render();
+}
+
+function addText() {
+  snapshot();
+  const tx = { id: id('t'), text: 'Ton texte ici', t: M.t, dur: 4, y: 0.15, size: 1, style: 'title', color: '#ffffff' };
+  M.texts.push(tx);
+  M.sel = { kind: 'text', id: tx.id };
+  render();
+  draw();
+  setTimeout(() => $('#mtTextInput')?.select(), 50);
+}
+
+// Coupe automatique des silences (« jump cut ») sur le segment choisi ou sur toute la vidéo.
+async function removeSilences(all) {
+  const targets = all ? [...M.segs] : [selected()].filter(x => x && M.sel.kind === 'seg');
+  if (!targets.length) { ui.toast('Sélectionne un segment (ou utilise « sur tout »).', '', 3000); return; }
+  const thr = +$('#mtSilThr').value, minSil = +$('#mtSilMin').value, pad = 0.12;
+  const busy = ui.toast('Analyse du son pour trouver les silences…', '', 0);
+  try {
+    for (const m of new Set(targets.map(mediaOf))) {
+      if (!m.energy) m.energy = computeEnergy(await decodeAudio(m.file), HOP);
+    }
+  } catch (e) {
+    busy.remove();
+    ui.toast(`Impossible de lire le son : ${e.message}`, 'err', 6000);
+    return;
+  }
+  busy.remove();
+  snapshot();
+  let removed = 0;
+  for (const s of targets) {
+    const m = mediaOf(s), e = m.energy;
+    const parts = [];
+    let runStart = null, keepFrom = s.a;
+    for (let t = s.a; t <= s.b; t += HOP) {
+      const quiet = (e[Math.floor(t / HOP)] ?? 0) < thr;
+      if (quiet && runStart === null) runStart = t;
+      if ((!quiet || t + HOP > s.b) && runStart !== null) {
+        const runEnd = quiet ? s.b : t;
+        if (runEnd - runStart >= minSil) {
+          const cutA = runStart + pad, cutB = runEnd - pad;
+          if (cutA - keepFrom > 0.15) parts.push([keepFrom, cutA]);
+          removed += cutB - cutA;
+          keepFrom = cutB;
+        }
+        runStart = null;
+      }
+    }
+    if (s.b - keepFrom > 0.15) parts.push([keepFrom, s.b]);
+    if (!parts.length) continue;
+    const i = M.segs.indexOf(s);
+    M.segs.splice(i, 1, ...parts.map(([a, b], j) => newSeg(m, a, b, { ...s, trans: j ? 'none' : s.trans })));
+  }
+  M.sel = null;
+  render();
+  seek(0);
+  ui.toast(removed > 0.5 ? `✂ ${fmtTime(removed)} de silences retirés` : 'Aucun silence assez long trouvé (baisse la sensibilité).', removed > 0.5 ? 'ok' : '', 4000);
+}
+
+/* ---------------- Export ---------------- */
+
+let exportDone = null;
+
+async function exportVideo() {
+  if (!M.segs.length) { ui.toast('Ajoute au moins une vidéo.', 'err'); return; }
+  if (M.exporting) return;
+  audio();
+  await ac.resume();
+  M.exporting = true;
+  pause();
+  sizeCanvas(M.quality);
+  const [W, H] = [canvas.width, canvas.height];
+  const stream = new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...recDest.stream.getAudioTracks()]);
+  const mime = pickMime();
+  const rec = new MediaRecorder(stream, {
+    ...(mime ? { mimeType: mime } : {}),
+    videoBitsPerSecond: Math.round(10_000_000 * (W * H) / (1080 * 1920)),
+    audioBitsPerSecond: 192_000,
+  });
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  const stopped = new Promise(r => { rec.onstop = r; });
+  speaker.gain.value = 0;
+  const t = ui.toast('', '', 0);
+  const progress = setInterval(() => {
+    t.textContent = `⏺ Export du montage — ${Math.round(100 * M.t / total())} % · reste ~${fmtTime(total() - M.t)} (gardez l'onglet visible)`;
+  }, 400);
+  await new Promise(r => { exportDone = r; seekTo(elFor(0), M.segs[0].a).then(() => { M.t = 0; draw(); rec.start(500); play(); }); });
+  await new Promise(r => setTimeout(r, 150));
+  rec.stop();
+  await stopped;
+  clearInterval(progress);
+  t.remove();
+  speaker.gain.value = 1;
+  M.exporting = false;
+  sizeCanvas('preview');
+  draw();
+  const type = (mime || 'video/webm').split(';')[0];
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(chunks, { type }));
+  a.download = `montage_${new Date().toISOString().slice(0, 10)}.${type.includes('mp4') ? 'mp4' : 'webm'}`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+  ui.toast('✅ Montage exporté', 'ok');
+  ui.notify('Montage exporté');
+}
+
+function finishExport() {
+  if (exportDone) { const r = exportDone; exportDone = null; r(); }
+}
+
+/* ---------------- Interface ---------------- */
+
+function render() {
+  $('#mtEmpty').classList.toggle('hidden', M.media.length > 0);
+  // Bibliothèque
+  $('#mtMedia').innerHTML = '';
+  M.media.forEach(m => {
+    const d = document.createElement('div');
+    d.className = 'mt-file';
+    d.style.setProperty('--c', m.color);
+    d.innerHTML = `<img alt=""><div><b></b><small>${fmtTime(m.duration)} · ${m.w}×${m.h}</small></div><button class="btn ghost sm" title="Ajouter à la fin de la timeline">＋</button>`;
+    d.querySelector('img').src = m.thumb;
+    d.querySelector('b').textContent = m.name;
+    d.querySelector('button').addEventListener('click', () => { snapshot(); M.segs.push(newSeg(m, 0, m.duration)); render(); draw(); });
+    $('#mtMedia').append(d);
+  });
+  // Timeline
+  const T = total();
+  const width = Math.max(T * M.zoom + 200, $('#mtTimeline').clientWidth);
+  $('#mtInner').style.width = `${width}px`;
+  const ruler = $('#mtRuler');
+  ruler.innerHTML = '';
+  const step = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find(s => s * M.zoom >= 70) || 600;
+  for (let t = 0; t <= T + step; t += step) {
+    const tick = document.createElement('span');
+    tick.style.left = `${t * M.zoom}px`;
+    tick.textContent = fmtTime(t);
+    ruler.append(tick);
+  }
+  const track = $('#mtTrack');
+  track.innerHTML = '';
+  M.segs.forEach((s, k) => {
+    const m = mediaOf(s);
+    const b = document.createElement('div');
+    b.className = `mt-seg${M.sel?.id === s.id ? ' sel' : ''}`;
+    b.style.width = `${Math.max(4, segDur(s) * M.zoom)}px`;
+    b.style.setProperty('--c', m.color);
+    b.style.backgroundImage = `url(${m.thumb})`;
+    b.draggable = true;
+    b.title = `${m.name} · ${fmtTime(s.a)} → ${fmtTime(s.b)}`;
+    b.innerHTML = `<span>${s.trans === 'fade' && k ? '◐ ' : ''}${s.speed !== 1 ? `${s.speed}× ` : ''}${fmtTime(segDur(s))}</span>`;
+    b.addEventListener('click', e => {
+      M.sel = { kind: 'seg', id: s.id };
+      const r = b.getBoundingClientRect();
+      seek(startOf(k) + ((e.clientX - r.left) / r.width) * segDur(s));
+      render();
+    });
+    b.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', String(k)); b.classList.add('drag'); });
+    b.addEventListener('dragend', () => b.classList.remove('drag'));
+    b.addEventListener('dragover', e => e.preventDefault());
+    b.addEventListener('drop', e => {
+      e.preventDefault();
+      const from = +e.dataTransfer.getData('text/plain');
+      if (Number.isNaN(from) || from === k) return;
+      snapshot();
+      const [x] = M.segs.splice(from, 1);
+      M.segs.splice(k, 0, x);
+      render();
+      seek(startOf(k));
+    });
+    track.append(b);
+  });
+  const texts = $('#mtTexts');
+  texts.innerHTML = '';
+  M.texts.forEach(tx => {
+    const b = document.createElement('div');
+    b.className = `mt-txt${M.sel?.id === tx.id ? ' sel' : ''}`;
+    b.style.left = `${tx.t * M.zoom}px`;
+    b.style.width = `${Math.max(16, tx.dur * M.zoom)}px`;
+    b.textContent = `T ${tx.text.split('\n')[0]}`;
+    // Glisser pour déplacer le texte dans le temps.
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      M.sel = { kind: 'text', id: tx.id };
+      const x0 = e.clientX, t0 = tx.t;
+      let moved = false;
+      const mv = ev => {
+        if (!moved) { snapshot(); moved = true; }
+        tx.t = clamp(t0 + (ev.clientX - x0) / M.zoom, 0, Math.max(0, total() - 0.5));
+        b.style.left = `${tx.t * M.zoom}px`;
+      };
+      const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); render(); seek(tx.t); };
+      addEventListener('pointermove', mv);
+      addEventListener('pointerup', up);
+    });
+    texts.append(b);
+  });
+  inspector();
+  $('#mtExport').disabled = !M.segs.length;
+  $$('#mtAspect button').forEach(b => b.classList.toggle('on', b.dataset.v === M.aspect));
+  sizeCanvas('preview');
+}
+
+function inspector() {
+  const box = $('#mtInspect');
+  const x = selected();
+  if (!x) {
+    box.innerHTML = `<h3>Réglages</h3><p class="muted">Clique sur un segment ou un texte de la timeline pour le modifier.</p>
+      <div class="field"><label class="switch-row"><span class="label">Fondu au début de la vidéo</span><input type="checkbox" id="mtFadeIn" ${M.fadeIn ? 'checked' : ''}><span class="switch"></span></label>
+      <label class="switch-row"><span class="label">Fondu à la fin de la vidéo</span><input type="checkbox" id="mtFadeOut" ${M.fadeOut ? 'checked' : ''}><span class="switch"></span></label></div>
+      <div class="kv"><span>Durée totale</span><b class="mono">${fmtTime(total())}</b></div>
+      <div class="kv"><span>Segments</span><b class="mono">${M.segs.length}</b></div>`;
+    $('#mtFadeIn').onchange = e => { M.fadeIn = e.target.checked; draw(); };
+    $('#mtFadeOut').onchange = e => { M.fadeOut = e.target.checked; draw(); };
+    return;
+  }
+  if (M.sel.kind === 'seg') {
+    const m = mediaOf(x);
+    box.innerHTML = `<h3>Segment</h3><p class="muted" title="${m.name}">${m.name}</p>
+      <div class="field"><div class="label">Début dans la vidéo <b class="mono" id="mtAv">${fmtTime(x.a)}</b></div><input type="range" id="mtA" min="0" max="${m.duration}" step="0.05" value="${x.a}"></div>
+      <div class="field"><div class="label">Fin dans la vidéo <b class="mono" id="mtBv">${fmtTime(x.b)}</b></div><input type="range" id="mtB" min="0" max="${m.duration}" step="0.05" value="${x.b}"></div>
+      <div class="field"><div class="label">Vitesse</div><div class="chips" id="mtSpeed">${[0.5, 1, 1.25, 1.5, 2].map(v => `<button data-v="${v}" class="${v === x.speed ? 'on' : ''}">${String(v).replace('.', ',')}×</button>`).join('')}</div></div>
+      <div class="field"><div class="label">Volume <b id="mtVolV">${Math.round(x.vol * 100)} %</b></div><input type="range" id="mtVol" min="0" max="2" step="0.05" value="${x.vol}"></div>
+      <div class="field"><div class="label">Filtre</div><div class="chips" id="mtFilter">${Object.entries(FILTERS).map(([k, f]) => `<button data-v="${k}" class="${k === x.filter ? 'on' : ''}">${f.label}</button>`).join('')}</div></div>
+      <div class="field"><div class="label">Transition avant ce segment</div><div class="chips" id="mtTrans"><button data-v="none" class="${x.trans !== 'fade' ? 'on' : ''}">Coupe franche</button><button data-v="fade" class="${x.trans === 'fade' ? 'on' : ''}">◐ Fondu au noir</button></div></div>
+      <div class="field"><div class="label">Mise en page</div><div class="chips" id="mtLayout"><button data-v="fill" class="${x.layout === 'fill' ? 'on' : ''}">Remplir</button><button data-v="fit" class="${x.layout === 'fit' ? 'on' : ''}">Ajusté + fond flou</button></div></div>
+      <button class="btn ghost sm" id="mtApplyAll">Appliquer vitesse, volume, filtre et mise en page à tous</button>`;
+    const range = (idr, key, lbl) => {
+      $(idr).addEventListener('pointerdown', snapshot, { once: true });
+      $(idr).addEventListener('input', e => {
+        const v = +e.target.value;
+        if (key === 'a') x.a = clamp(v, 0, x.b - 0.2); else x.b = clamp(v, x.a + 0.2, m.duration);
+        $(lbl).textContent = fmtTime(x[key]);
+        M.t = startOf(M.segs.indexOf(x)) + (key === 'b' ? segDur(x) - 0.05 : 0);
+        seek(M.t);
+      });
+      $(idr).addEventListener('change', render);
+    };
+    range('#mtA', 'a', '#mtAv');
+    range('#mtB', 'b', '#mtBv');
+    const chips = (idc, key, num) => $(idc).addEventListener('click', e => {
+      const b = e.target.closest('button[data-v]');
+      if (!b) return;
+      snapshot();
+      x[key] = num ? +b.dataset.v : b.dataset.v;
+      render();
+      seek(M.t);
+    });
+    chips('#mtSpeed', 'speed', true);
+    chips('#mtFilter', 'filter');
+    chips('#mtTrans', 'trans');
+    chips('#mtLayout', 'layout');
+    $('#mtVol').addEventListener('pointerdown', snapshot, { once: true });
+    $('#mtVol').addEventListener('input', e => { x.vol = +e.target.value; $('#mtVolV').textContent = `${Math.round(x.vol * 100)} %`; });
+    $('#mtApplyAll').addEventListener('click', () => {
+      snapshot();
+      M.segs.forEach(s => { s.speed = x.speed; s.vol = x.vol; s.filter = x.filter; s.layout = x.layout; });
+      render();
+      seek(M.t);
+      ui.toast('Réglages appliqués à tous les segments', 'ok', 2000);
+    });
+  } else {
+    box.innerHTML = `<h3>Texte</h3>
+      <div class="field"><textarea id="mtTextInput" rows="3"></textarea></div>
+      <div class="field"><div class="label">Style</div><div class="chips" id="mtTStyle">${Object.entries(TEXT_STYLES).map(([k, l]) => `<button data-v="${k}" class="${k === x.style ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      <div class="row2"><div class="field"><div class="label">Début (s)</div><input type="number" class="input" id="mtTt" min="0" step="0.1" value="${x.t.toFixed(1)}"></div>
+      <div class="field"><div class="label">Durée (s)</div><input type="number" class="input" id="mtTd" min="0.5" step="0.5" value="${x.dur}"></div></div>
+      <div class="field"><div class="label">Position verticale</div><input type="range" id="mtTy" min="0.08" max="0.92" step="0.01" value="${x.y}"></div>
+      <div class="field"><div class="label">Taille</div><input type="range" id="mtTs" min="0.5" max="2" step="0.05" value="${x.size}"></div>
+      <div class="field"><div class="label">Couleur (style Titre)</div><input type="color" id="mtTc" value="${x.color}"></div>`;
+    $('#mtTextInput').value = x.text;
+    const bind = (sel, ev, fn) => { $(sel).addEventListener('focus', snapshot, { once: true }); $(sel).addEventListener('pointerdown', snapshot, { once: true }); $(sel).addEventListener(ev, e => { fn(e.target.value); draw(); }); };
+    bind('#mtTextInput', 'input', v => { x.text = v; const b = $('.mt-txt.sel'); if (b) b.textContent = `T ${v.split('\n')[0]}`; });
+    bind('#mtTt', 'change', v => { x.t = Math.max(0, +v || 0); render(); seek(x.t); });
+    bind('#mtTd', 'change', v => { x.dur = Math.max(0.5, +v || 1); render(); });
+    bind('#mtTy', 'input', v => { x.y = +v; });
+    bind('#mtTs', 'input', v => { x.size = +v; });
+    bind('#mtTc', 'input', v => { x.color = v; });
+    $('#mtTStyle').addEventListener('click', e => {
+      const b = e.target.closest('button[data-v]');
+      if (!b) return;
+      snapshot();
+      x.style = b.dataset.v;
+      inspector();
+      draw();
+    });
+    if (M.t < x.t || M.t > x.t + x.dur) seek(x.t + 0.3);
+  }
+}
+
+export function initMontage(helpers) {
+  ui = helpers;
+  sizeCanvas('preview');
+  draw();
+  requestAnimationFrame(tick);
+
+  const input = $('#mtInput');
+  $('#mtAdd').addEventListener('click', () => input.click());
+  $('#mtEmpty').addEventListener('click', () => input.click());
+  input.addEventListener('change', e => { addFiles([...e.target.files]); e.target.value = ''; });
+  const stage = $('#screen-montage');
+  stage.addEventListener('dragover', e => e.preventDefault());
+  stage.addEventListener('drop', e => {
+    if (!e.dataTransfer.files.length) return;
+    e.preventDefault();
+    addFiles([...e.dataTransfer.files]);
+  });
+
+  $('#mtPlay').addEventListener('click', () => (M.playing ? pause() : play()));
+  canvas.addEventListener('click', () => (M.playing ? pause() : play()));
+  $('#mtSplit').addEventListener('click', split);
+  $('#mtDelete').addEventListener('click', remove);
+  $('#mtLeft').addEventListener('click', () => move(-1));
+  $('#mtRight').addEventListener('click', () => move(1));
+  $('#mtDup').addEventListener('click', duplicate);
+  $('#mtText').addEventListener('click', addText);
+  $('#mtUndo').addEventListener('click', undo);
+  $('#mtRedo').addEventListener('click', redo);
+  $('#mtSilence').addEventListener('click', () => removeSilences(false));
+  $('#mtSilenceAll').addEventListener('click', () => removeSilences(true));
+  $('#mtExport').addEventListener('click', exportVideo);
+  $('#mtZoom').addEventListener('input', e => { M.zoom = +e.target.value; render(); draw(); });
+  $('#mtSilThr').addEventListener('input', e => { $('#mtSilThrV').textContent = `${Math.round(e.target.value * 100)} %`; });
+  $('#mtSilMin').addEventListener('input', e => { $('#mtSilMinV').textContent = `${(+e.target.value).toFixed(1)} s`; });
+  $('#mtAspect').addEventListener('click', e => {
+    const b = e.target.closest('button[data-v]');
+    if (!b) return;
+    M.aspect = b.dataset.v;
+    render();
+    draw();
+  });
+  $('#mtQuality').addEventListener('change', e => { M.quality = e.target.value; });
+  $('#mtMute').addEventListener('click', () => {
+    audio();
+    speaker.gain.value = speaker.gain.value ? 0 : 1;
+    $('#mtMute').textContent = speaker.gain.value ? '🔊' : '🔇';
+  });
+  // Clic sur la règle ou dans le vide de la timeline : déplace la tête de lecture.
+  $('#mtInner').addEventListener('pointerdown', e => {
+    if (e.target.closest('.mt-seg, .mt-txt')) return;
+    const r = $('#mtInner').getBoundingClientRect();
+    seek((e.clientX - r.left) / M.zoom);
+    if (e.target.closest('#mtTrack') || e.target === $('#mtInner')) { M.sel = null; render(); }
+  });
+
+  const musicIn = $('#mtMusicInput');
+  $('#mtMusic').addEventListener('click', () => musicIn.click());
+  musicIn.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    audio();
+    if (M.music) URL.revokeObjectURL(M.music.url);
+    M.music = { name: f.name, url: URL.createObjectURL(f), duration: 0 };
+    musicEl.src = M.music.url;
+    musicEl.onloadedmetadata = () => { M.music.duration = musicEl.duration; };
+    $('#mtMusicName').textContent = f.name;
+    $('#mtMusicOff').classList.remove('hidden');
+  });
+  $('#mtMusicOff').addEventListener('click', () => {
+    M.music = null;
+    musicEl?.pause();
+    $('#mtMusicName').textContent = 'Aucune';
+    $('#mtMusicOff').classList.add('hidden');
+  });
+  $('#mtMusicVol').addEventListener('input', e => { M.musicVol = +e.target.value; });
+
+  document.addEventListener('keydown', e => {
+    if (!stage.classList.contains('active') || M.exporting) return;
+    if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+    const k = e.key.toLowerCase();
+    if (e.code === 'Space') { e.preventDefault(); M.playing ? pause() : play(); }
+    else if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+    else if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); }
+    else if ((e.ctrlKey || e.metaKey) && k === 'd') { e.preventDefault(); duplicate(); }
+    else if (k === 's') split();
+    else if (k === 't') addText();
+    else if (e.key === 'Delete' || e.key === 'Backspace') remove();
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      seek(M.t + (e.shiftKey ? 5 : 1) * (e.key === 'ArrowLeft' ? -1 : 1));
+    } else if (e.key === 'Home') seek(0);
+    else if (e.key === 'End') seek(total());
+  });
+  window.addEventListener('resize', () => M.media.length && render());
+  render();
+}
+
+export function leaveMontage() { pause(); }
+
+// Accès de débogage depuis la console.
+window.clipforgeMontage = M;
