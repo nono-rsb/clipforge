@@ -2,6 +2,12 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-25 (11e série) — Protection
+
+80. Page « Confidentialité et conditions » (legal.html) : politique de confidentialité, conditions d'utilisation, mentions légales, logiciels tiers ; liens en bas de l'accueil et dans l'aide
+81. Message d'acceptation des conditions au premier lancement
+82. Licence propriétaire (LICENSE) : le code est visible mais ne peut pas être copié ni redistribué sans autorisation
+
 ## 2026-10-25 (10e série)
 
 79. Tuto intégré au montage : visite guidée en 13 étapes qui met chaque outil en lumière, lancée automatiquement la première fois puis avec le bouton « 🎓 Tuto » (marche aussi sur téléphone)

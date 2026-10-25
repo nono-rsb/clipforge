@@ -9,7 +9,7 @@ on:
   push:
     tags: ['v*']
     branches: [main]
-    paths: ['index.html', 'styles.css', 'manifest.webmanifest', 'icons/**', 'js/**', 'server.js', 'build/**', 'desktop/**', '.github/workflows/exe.yml']
+    paths: ['index.html', 'legal.html', 'styles.css', 'manifest.webmanifest', 'icons/**', 'js/**', 'server.js', 'build/**', 'desktop/**', '.github/workflows/exe.yml']
   workflow_dispatch:
     inputs:
       version:

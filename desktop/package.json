@@ -3,7 +3,8 @@
   "productName": "ClipForge",
   "version": "1.0.0",
   "description": "Clips et montage vidéo, 100 % sur ton PC",
-  "author": "ClipForge",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "nono-rsb",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -20,15 +21,33 @@
   "build": {
     "appId": "com.clipforge.app",
     "productName": "ClipForge",
-    "directories": { "output": "../dist/desktop" },
+    "copyright": "© 2026 nono-rsb. Tous droits réservés.",
+    "directories": {
+      "output": "../dist/desktop"
+    },
     "files": [
       "main.js",
       "preload.js",
       "icon.png",
       "package.json",
-      { "from": "..", "to": ".", "filter": ["index.html", "styles.css", "manifest.webmanifest", "js/**", "icons/**", "server.js"] }
+      {
+        "from": "..",
+        "to": ".",
+        "filter": [
+          "index.html",
+          "legal.html",
+          "styles.css",
+          "manifest.webmanifest",
+          "js/**",
+          "icons/**",
+          "server.js"
+        ]
+      }
     ],
-    "win": { "target": "nsis", "icon": "icon.png" },
+    "win": {
+      "target": "nsis",
+      "icon": "icon.png"
+    },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
@@ -37,6 +56,12 @@
       "shortcutName": "ClipForge",
       "artifactName": "ClipForge-Setup.${ext}"
     },
-    "publish": [{ "provider": "github", "owner": "nono-rsb", "repo": "clipforge" }]
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "nono-rsb",
+        "repo": "clipforge"
+      }
+    ]
   }
 }

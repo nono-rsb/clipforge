@@ -1,0 +1,20 @@
+ClipForge — Licence propriétaire
+
+Copyright (c) 2026 nono-rsb. Tous droits réservés.
+
+ClipForge (le code source, le design, le nom, le logo et la documentation) est protégé par le droit
+d'auteur. Le fait que le code soit visible publiquement ne donne aucun droit de le réutiliser.
+
+Autorisé : utiliser gratuitement les versions officielles de ClipForge (site, app iPhone, app PC
+publiée sur https://github.com/nono-rsb/clipforge/releases) pour créer ses propres vidéos, y compris
+pour les publier ou les monétiser.
+
+Interdit sans l'autorisation écrite préalable de l'auteur : copier, modifier, adapter, traduire,
+fusionner, publier, distribuer, revendre, louer ou sous-licencier tout ou partie de ClipForge ou d'une
+version modifiée, y compris sous un autre nom ; retirer ou modifier cette notice.
+
+Les composants tiers (Electron, Transformers.js, MediaPipe, yt-dlp, FFmpeg, polices…) restent soumis
+à leur propre licence : voir legal.html, section « Logiciels tiers ».
+
+LE LOGICIEL EST FOURNI « EN L'ÉTAT », SANS GARANTIE D'AUCUNE SORTE, DANS TOUTE LA MESURE PERMISE PAR
+LA LOI. Voir les conditions d'utilisation : legal.html#conditions.

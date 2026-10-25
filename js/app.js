@@ -73,6 +73,20 @@ function toast(msg, kind = '', ms = 4500) {
 
 setSaveToast(toast);
 
+// Premier lancement : conditions d'utilisation et confidentialité, à accepter une fois.
+const CGU = '2026-10-25';
+if (store.get('cgu') !== CGU) {
+  const t = toast('', '', 0);
+  t.className = 'toast consent';
+  t.innerHTML = `<b>Bienvenue sur ClipForge 👋</b><span>Tes vidéos restent sur ton appareil. Utilise seulement des vidéos et musiques que tu as le droit d'utiliser.
+    En continuant, tu acceptes les <a href="legal.html#conditions">conditions d'utilisation</a> et la <a href="legal.html#confidentialite">politique de confidentialité</a>.</span>`;
+  const ok = document.createElement('button');
+  ok.className = 'btn primary sm';
+  ok.textContent = "J'accepte";
+  ok.onclick = () => { store.set('cgu', CGU); t.remove(); };
+  t.append(ok);
+}
+
 // Version téléphone : installable sur l'écran d'accueil et utilisable hors ligne.
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);

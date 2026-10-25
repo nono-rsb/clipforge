@@ -52,6 +52,10 @@ L'import par lien (YouTube…) marche avec l'exe et avec Node.js, mais pas sur l
 
 N'envoie pas les dossiers `bin/` et `downloads/` (le fichier `.gitignore` s'en charge). `bin/` contient ffmpeg (159 Mo), trop lourd pour GitHub. ClipForge le réinstalle tout seul au premier import YouTube.
 
+## Licence et confidentialité
+
+© 2026 nono-rsb, tous droits réservés (voir `LICENSE`). Confidentialité, conditions d'utilisation et mentions légales : `legal.html` (accessible depuis l'app).
+
 ## Structure
 
 - `js/analyzer.js` : analyse audio et vidéo, détection et notation des clips
