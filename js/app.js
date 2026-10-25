@@ -906,8 +906,38 @@ function sizePreview() {
   pv.height = Math.round(H * k);
 }
 
+/* Historique de l'éditeur : chaque retouche peut être annulée (Ctrl+Z) ou rétablie (Ctrl+Y). */
+const hist = { undo: [], redo: [] };
+const clipState = c => JSON.stringify({ start: c.start, end: c.end, title: c.title, opts: c.opts, words: c.words.map(({ emo, ...w }) => w), textEdited: c.textEdited });
+// Mémorise l'état juste avant une retouche (appelé au premier contact avec un réglage).
+function remember() {
+  const c = state.editing;
+  if (!c) return;
+  const j = clipState(c);
+  if (hist.undo.at(-1) !== j) { hist.undo.push(j); hist.redo = []; if (hist.undo.length > 80) hist.undo.shift(); }
+}
+function travel(from, to) {
+  const c = state.editing;
+  const cur = clipState(c);
+  while (from.length && from.at(-1) === cur) from.pop();
+  if (!from.length) return;
+  to.push(cur);
+  const d = JSON.parse(from.pop());
+  Object.assign(c, d);
+  c.groups = groupWords(c.words, c.opts.maxWords);
+  $('#edTitle').value = c.title;
+  $('#edText').value = c.words.map(w => w.w).join(' ');
+  $('#hookText').value = c.opts.hookText;
+  updateCaption();
+  syncEditor();
+}
+['pointerdown', 'focusin'].forEach(ev => $('#editor').addEventListener(ev, e => {
+  if (e.target.closest('.ed-side, #preview, .ed-title')) remember();
+}, true));
+
 function openEditor(clip) {
   state.editing = clip;
+  hist.undo = []; hist.redo = [];
   win = [Math.max(0, clip.origStart - 30), Math.min(state.duration, clip.origEnd + 30)];
   for (const id of ['#trimStart', '#trimEnd']) { $(id).min = win[0]; $(id).max = win[1]; }
   $('#edTitle').value = clip.title;
@@ -1071,7 +1101,13 @@ $('#scrub').addEventListener('input', e => { video.currentTime = +e.target.value
 $('#edClose').addEventListener('click', closeEditor);
 $('#edExport').addEventListener('click', () => runExport([state.editing]));
 document.addEventListener('keydown', e => {
-  if (!state.editing || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  if (!state.editing) return;
+  if ((e.ctrlKey || e.metaKey) && /^[zy]$/i.test(e.key) && !/TEXTAREA|INPUT/.test(document.activeElement.tagName)) {
+    e.preventDefault();
+    if (e.key.toLowerCase() === 'y' || e.shiftKey) travel(hist.redo, hist.undo); else travel(hist.undo, hist.redo);
+    return;
+  }
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
   if (e.code === 'Escape' && !document.fullscreenElement) closeEditor();
   if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
@@ -1079,8 +1115,8 @@ document.addEventListener('keydown', e => {
     const d = (e.shiftKey ? 5 : 1) * (e.code === 'ArrowLeft' ? -1 : 1);
     video.currentTime = clamp(video.currentTime + d, win[0], win[1]);
   }
-  if (e.code === 'KeyI') setTrim('start', video.currentTime);
-  if (e.code === 'KeyO') setTrim('end', video.currentTime);
+  if (e.code === 'KeyI') { remember(); setTrim('start', video.currentTime); }
+  if (e.code === 'KeyO') { remember(); setTrim('end', video.currentTime); }
   if (e.code === 'KeyM') toggleMute();
   if (e.code === 'KeyF') toggleFs();
 });

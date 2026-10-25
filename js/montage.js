@@ -1,7 +1,7 @@
 // Montage de vidéos longues : plusieurs vidéos sur une timeline, coupe, réorganisation,
 // suppression automatique des silences, textes, musique, transitions, export.
 // Tout se joue en direct sur un canvas ; l'export enregistre ce rendu (comme pour les clips).
-import { clamp, clamp01, fmtTime, seekTo, decodeAudioSmart, computeEnergy, resampleTo16k, buildWords } from './analyzer.js';
+import { clamp, clamp01, fmtTime, seekTo, decodeAudioSmart, computeEnergy, levelDb, resampleTo16k, buildWords } from './analyzer.js';
 import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer } from './renderer.js';
 import { pickMime, outputSize } from './exporter.js';
 import { transcribePcm } from './transcribe.js';
@@ -502,6 +502,29 @@ async function removeSilences(all) {
   ui.toast(removed > 0.5 ? `✂ ${fmtTime(removed)} de silences retirés` : 'Aucun silence assez long trouvé (baisse la sensibilité).', removed > 0.5 ? 'ok' : '', 4000);
 }
 
+// Égalise le volume : chaque segment est ramené au niveau médian de la voix (fenêtres parlées seulement).
+async function levelVolumes() {
+  const segs = M.segs.filter(s => !mediaOf(s).image);
+  if (!segs.length) return;
+  const busy = ui.toast('Mesure du volume de chaque segment…', '', 0);
+  try {
+    for (const m of new Set(segs.map(mediaOf))) if (!m.level) m.level = levelDb(await decodeAudioSmart(m.file), 0.5);
+  } catch (e) { busy.remove(); ui.toast(`Impossible de lire le son : ${e.message}`, 'err', 6000); return; }
+  busy.remove();
+  const loud = segs.map(s => {
+    const L = mediaOf(s).level;
+    const v = [...L.slice(Math.floor(s.a / 0.5), Math.ceil(s.b / 0.5))].filter(x => x > -50).sort((p, q) => p - q);
+    return v.length ? v[Math.floor(v.length * 0.7)] : null;
+  });
+  const known = loud.filter(x => x !== null).sort((p, q) => p - q);
+  if (!known.length) { ui.toast('Pas assez de son pour égaliser.', '', 3000); return; }
+  const target = known[Math.floor(known.length / 2)];
+  snapshot();
+  segs.forEach((s, i) => { if (loud[i] !== null) s.vol = +clamp(10 ** ((target - loud[i]) / 20), 0.3, 2).toFixed(2); });
+  render();
+  ui.toast(`🔊 Volume égalisé sur ${segs.length} segment(s)`, 'ok', 3000);
+}
+
 /* ---------------- Export ---------------- */
 
 let exportDone = null;
@@ -943,6 +966,7 @@ export function initMontage(helpers) {
   $('#mtRedo').addEventListener('click', redo);
   $('#mtSilence').addEventListener('click', () => removeSilences(false));
   $('#mtSilenceAll').addEventListener('click', () => removeSilences(true));
+  $('#mtLevel').addEventListener('click', levelVolumes);
   $('#mtExport').addEventListener('click', () => exportVideo(false));
   $('#mtAudio').addEventListener('click', () => exportVideo(true));
   $('#mtFrame').addEventListener('click', exportFrame);

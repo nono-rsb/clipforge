@@ -50,6 +50,18 @@ export async function decodeAudioSmart(file) {
   }
 }
 
+// Niveau sonore brut (dB) par fenêtre de `hop` secondes, sans normalisation.
+export function levelDb(audio, hop = 0.5) {
+  const a = audio.getChannelData(0), step = Math.floor(audio.sampleRate * hop);
+  const out = new Float32Array(Math.floor(a.length / step));
+  for (let i = 0; i < out.length; i++) {
+    let s = 0;
+    for (let j = i * step; j < (i + 1) * step; j += 4) s += a[j] * a[j];
+    out[i] = 20 * Math.log10(Math.sqrt(s / (step / 4)) + 1e-6);
+  }
+  return out;
+}
+
 // Énergie (RMS en dB normalisée 0..1) par fenêtre de `hop` secondes.
 export function computeEnergy(audio, hop = 0.1) {
   const sr = audio.sampleRate;
