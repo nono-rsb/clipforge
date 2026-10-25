@@ -1,0 +1,42 @@
+{
+  "name": "clipforge",
+  "productName": "ClipForge",
+  "version": "1.0.0",
+  "description": "Clips et montage vidéo, 100 % sur ton PC",
+  "author": "ClipForge",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.clipforge.app",
+    "productName": "ClipForge",
+    "directories": { "output": "../dist/desktop" },
+    "files": [
+      "main.js",
+      "preload.js",
+      "icon.png",
+      "package.json",
+      { "from": "..", "to": ".", "filter": ["index.html", "styles.css", "js/**", "server.js"] }
+    ],
+    "win": { "target": "nsis", "icon": "icon.png" },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ClipForge",
+      "artifactName": "ClipForge-Setup.${ext}"
+    },
+    "publish": [{ "provider": "github", "owner": "nono-rsb", "repo": "clipforge" }]
+  }
+}

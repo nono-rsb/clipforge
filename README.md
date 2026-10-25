@@ -6,11 +6,15 @@ Tout tourne **dans votre navigateur**, et aucune vidéo n'est envoyée sur Inter
 
 ## Lancer
 
-**Le plus simple :** téléchargez `ClipForge.exe` dans les [Releases](https://github.com/nono-rsb/clipforge/releases/latest) et double-cliquez dessus. Rien à installer : ClipForge s'ouvre dans votre navigateur (Chrome ou Edge). L'exe n'est pas signé, donc Windows peut afficher « Windows a protégé votre ordinateur » : cliquez sur « Informations complémentaires », puis « Exécuter quand même ».
+**Le plus simple : l'app PC.** Téléchargez `ClipForge-Setup.exe` dans les [Releases](https://github.com/nono-rsb/clipforge/releases/latest) et double-cliquez dessus. ClipForge s'installe en un clic (raccourcis sur le bureau et dans le menu Démarrer), s'ouvre dans sa propre fenêtre, enregistre les exports dans `Téléchargements\ClipForge` et se met à jour tout seul à chaque nouvelle version.
+
+**Sans installation :** `ClipForge.exe` (même page) s'ouvre dans votre navigateur (Chrome ou Edge).
+
+Aucun des deux n'est signé, donc Windows peut afficher « Windows a protégé votre ordinateur » : cliquez sur « Informations complémentaires », puis « Exécuter quand même ».
 
 Avec Node.js : double-cliquez sur **`Lancer ClipForge.bat`**, ou lancez `node server.js`, puis ouvrez http://localhost:5173.
 
-L'import par lien (YouTube…) marche avec l'exe et avec Node.js, mais pas sur la version en ligne. Au premier import, yt-dlp et ffmpeg s'installent tout seuls (avec l'exe, dans `%LOCALAPPDATA%\ClipForge`).
+L'import par lien (YouTube…) marche avec l'exe et avec Node.js, mais pas sur la version en ligne. Au premier import, yt-dlp et ffmpeg s'installent tout seuls (avec l'exe, dans `%LOCALAPPDATA%\ClipForge` ; avec l'app PC, dans `%APPDATA%\ClipForge`).
 
 ## Fonctions
 
@@ -57,4 +61,6 @@ N'envoie pas les dossiers `bin/` et `downloads/` (le fichier `.gitignore` s'en c
 - `js/montage.js` : onglet Montage (timeline, silences, textes, export)
 - `js/transcribe.js` : lance Whisper (partagé entre Clipping et Montage)
 - `js/cache.js` : analyses gardées dans le navigateur (IndexedDB)
-- `build/build-exe.js` : fabrique `ClipForge.exe` (Node SEA). GitHub le fait tout seul à chaque tag `v*` (`.github/workflows/exe.yml`)
+- `build/build-exe.js` : fabrique `ClipForge.exe` (Node SEA)
+- `desktop/` : l'app PC (Electron) : fenêtre, téléchargements, mises à jour automatiques ; `npm start` pour la lancer, `npm run dist` pour l'installateur
+- `.github/workflows/exe.yml` : GitHub fabrique et publie les deux à chaque modification de l'app

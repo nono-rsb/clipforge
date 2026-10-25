@@ -2,6 +2,13 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-25 (8e série) — Vraie app PC
+
+69. Application Windows (Electron) avec installateur `ClipForge-Setup.exe` : propre fenêtre, icône, raccourcis bureau et menu Démarrer, désinstallation depuis Windows
+70. Mises à jour automatiques de l'app PC à chaque nouvelle version publiée
+71. Les exports de l'app PC sont enregistrés directement dans Téléchargements\ClipForge, avec un bouton « Ouvrir le dossier »
+72. L'app PC se rouvre à la même taille et position, et une seule fenêtre à la fois
+
 ## 2026-10-25 (7e série) — Musique de fond du montage
 
 64. Piste musique sur la timeline du montage : plusieurs musiques possibles, chacune posée où on veut, avec sa forme d'onde

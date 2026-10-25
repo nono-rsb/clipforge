@@ -12,10 +12,12 @@ const { exec, execFile, execFileSync, spawn } = require('child_process');
 const PORT = Number(process.env.PORT) || 5173;
 const WIN = process.platform === 'win32';
 const sea = (() => { try { const m = require('node:sea'); return m.isSea() ? m : null; } catch { return null; } })();
+// Dans l'app PC (Electron, voir desktop/), ce serveur tourne dans l'app et les outils vont dans son dossier de données.
+const ELECTRON = !!process.versions.electron;
 const ROOT = __dirname;
-const DATA = sea
+const DATA = process.env.CLIPFORGE_DATA || (sea
   ? path.join(process.env.LOCALAPPDATA || require('os').homedir(), 'ClipForge')
-  : ROOT;
+  : ROOT);
 const BIN = path.join(DATA, 'bin');
 const DL = path.join(DATA, 'downloads');
 const TYPES = {
@@ -84,7 +86,7 @@ function findFile(dir, name) {
 }
 
 function jsRuntime() {
-  if (!sea) return `node:${process.execPath}`;
+  if (!sea && !ELECTRON) return `node:${process.execPath}`;
   const node = findTool('node');
   if (node) return `node:${node}`;
   const deno = findTool('deno');
@@ -305,18 +307,28 @@ const server = http.createServer((req, res) => {
   const file = path.normalize(path.join(ROOT, rel));
   if (!file.startsWith(ROOT) || file.startsWith(BIN)) { res.writeHead(403).end(); return; }
   serveDisk(req, res, file);
-}).listen(PORT, '127.0.0.1', () => {
-  const url = `http://localhost:${PORT}`;
-  console.log(`\n  ✂  ClipForge est lancé → ${url}\n  (fermez cette fenêtre pour arrêter)\n`);
-  cleanDownloads();
-  openBrowser(url);
 });
 
-server.on('error', err => {
-  if (err.code === 'EADDRINUSE') {
+function start(port = PORT) {
+  return new Promise((resolve, reject) => {
+    const fail = err => { server.off('listening', ok); reject(err); };
+    const ok = () => { server.off('error', fail); cleanDownloads(); resolve(`http://localhost:${server.address().port}`); };
+    server.once('error', fail);
+    server.once('listening', ok);
+    server.listen(port, '127.0.0.1');
+  });
+}
+module.exports = { start };
+
+if (!ELECTRON) {
+  start().then(url => {
+    console.log(`\n  ✂  ClipForge est lancé → ${url}\n  (fermez cette fenêtre pour arrêter)\n`);
+    openBrowser(url);
+  }, err => {
+    if (err.code !== 'EADDRINUSE') throw err;
     // ClipForge tourne déjà : on ouvre simplement la page.
     console.log(`\n  ClipForge est déjà lancé → http://localhost:${PORT}\n`);
     openBrowser(`http://localhost:${PORT}`);
     setTimeout(() => process.exit(0), 1500);
-  } else throw err;
-});
+  });
+}

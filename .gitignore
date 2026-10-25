@@ -9,3 +9,4 @@ dist/
 
 # Réglages locaux de Claude
 .claude/
+desktop/node_modules/

@@ -70,6 +70,16 @@ function toast(msg, kind = '', ms = 4500) {
   return el;
 }
 
+// App PC : chaque export est enregistré directement dans Téléchargements\ClipForge.
+window.clipforgeDesktop?.onSaved(file => {
+  const t = toast(`📁 Enregistré dans Téléchargements\\ClipForge : ${file.split(/[\\/]/).pop()} `, 'ok', 8000);
+  const b = document.createElement('button');
+  b.className = 'btn ghost sm';
+  b.textContent = 'Ouvrir le dossier';
+  b.onclick = () => window.clipforgeDesktop.show(file);
+  t.append(b);
+});
+
 // Prévient quand une longue tâche finit pendant que l'onglet est caché.
 function notify(text) {
   if (!document.hidden) return;
