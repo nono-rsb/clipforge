@@ -5,6 +5,7 @@ import { clamp, clamp01, fmtTime, seekTo, decodeAudio, decodeAudioSmart, compute
 import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer } from './renderer.js';
 import { pickMime, outputSize } from './exporter.js';
 import { transcribePcm } from './transcribe.js';
+import { saveBlob, keepAwake } from './save.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -644,6 +645,7 @@ async function exportVideo(audioOnly = false) {
   audio();
   await ac.resume();
   M.exporting = true;
+  const release = await keepAwake();
   pause();
   sizeCanvas(M.quality);
   const [W, H] = [canvas.width, canvas.height];
@@ -671,6 +673,7 @@ async function exportVideo(audioOnly = false) {
   clearInterval(progress);
   t.remove();
   speaker.gain.value = 1;
+  release();
   M.exporting = false;
   sizeCanvas('preview');
   draw();
@@ -691,13 +694,7 @@ async function exportVideo(audioOnly = false) {
   ui.notify(audioOnly ? 'Son du montage exporté' : 'Montage exporté');
 }
 
-function download(blob, name) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
-}
+const download = saveBlob;
 
 function exportFrame() {
   if (!M.segs.length) return;

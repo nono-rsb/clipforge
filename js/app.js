@@ -6,6 +6,7 @@ import { loadFaceDetector, detectFaces } from './faces.js';
 import { renderFrame, groupWords, CAPTION_STYLES, CAPTION_FONTS, FILTERS, isSwear } from './renderer.js';
 import { exportClip, outputSize } from './exporter.js';
 import { transcribePcm } from './transcribe.js';
+import { saveBlob, setSaveToast, keepAwake } from './save.js';
 import { cacheKey, loadAnalysis, saveAnalysis, loadClips, saveClips } from './cache.js';
 
 const $ = s => document.querySelector(s);
@@ -68,6 +69,20 @@ function toast(msg, kind = '', ms = 4500) {
   $('#toasts').append(el);
   if (ms) setTimeout(() => el.remove(), ms);
   return el;
+}
+
+setSaveToast(toast);
+
+// Version téléphone : installable sur l'écran d'accueil et utilisable hors ligne.
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if (ios && !navigator.standalone && !store.get('a2hs')) {
+  const t = toast('📲 Pour avoir ClipForge comme une app : touche Partager (le carré avec la flèche ⬆︎) puis « Sur l\'écran d\'accueil ». ', '', 0);
+  const x = document.createElement('button');
+  x.className = 'btn ghost sm';
+  x.textContent = 'OK';
+  x.onclick = () => { store.set('a2hs', '1'); t.remove(); };
+  t.append(x);
 }
 
 // App PC : chaque export est enregistré directement dans Téléchargements\ClipForge.
@@ -703,6 +718,7 @@ function safeName(s) {
 async function runExport(clips) {
   if (state.exporting) { toast('Un export est déjà en cours.'); return; }
   state.exporting = true;
+  const release = await keepAwake();
   const wasPlaying = !video.paused;
   video.pause();
   const t = toast('', '', 0);
@@ -726,11 +742,7 @@ async function runExport(clips) {
       });
       card?.classList.remove('exporting');
       left -= realLen(clip);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${String(i + 1).padStart(2, '0')}_${clip.score}_${safeName(clip.title)}.${ext}`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+      saveBlob(blob, `${String(i + 1).padStart(2, '0')}_${clip.score}_${safeName(clip.title)}.${ext}`);
     }
     toast(clips.length > 1 ? `✅ ${clips.length} clips exportés` : '✅ Clip exporté', 'ok');
     notify(clips.length > 1 ? `${clips.length} clips exportés` : 'Clip exporté');
@@ -739,6 +751,7 @@ async function runExport(clips) {
     toast(`Échec de l'export : ${e.message}`, 'err', 8000);
   } finally {
     t.remove();
+    release();
     state.exporting = false;
     $$('.card.exporting').forEach(c => c.classList.remove('exporting'));
     if (wasPlaying && state.editing) video.play();
@@ -812,13 +825,7 @@ function exportSrt(clip) {
   download(new Blob([lines.join('\n')], { type: 'text/plain' }), `${safeName(clip.title)}.srt`);
 }
 
-function download(blob, name) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
-}
+const download = saveBlob;
 
 $('#exportSrt').addEventListener('click', () => exportSrt(state.editing));
 

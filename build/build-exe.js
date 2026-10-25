@@ -14,7 +14,7 @@ const config = path.join(DIST, 'sea-config.json');
 fs.rmSync(DIST, { recursive: true, force: true });
 fs.mkdirSync(DIST);
 
-const files = ['index.html', 'styles.css', ...fs.readdirSync(path.join(ROOT, 'js')).map(f => `js/${f}`)];
+const files = ['index.html', 'styles.css', 'manifest.webmanifest', ...['js', 'icons'].flatMap(d => fs.readdirSync(path.join(ROOT, d)).map(f => `${d}/${f}`))];
 const assets = Object.fromEntries(files.map(f => [f, path.join(ROOT, f)]));
 fs.writeFileSync(config, JSON.stringify({
   main: path.join(ROOT, 'server.js'),

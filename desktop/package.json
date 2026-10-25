@@ -26,7 +26,7 @@
       "preload.js",
       "icon.png",
       "package.json",
-      { "from": "..", "to": ".", "filter": ["index.html", "styles.css", "js/**", "server.js"] }
+      { "from": "..", "to": ".", "filter": ["index.html", "styles.css", "manifest.webmanifest", "js/**", "icons/**", "server.js"] }
     ],
     "win": { "target": "nsis", "icon": "icon.png" },
     "nsis": {

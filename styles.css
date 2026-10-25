@@ -368,3 +368,32 @@ main:has(#screen-montage.active) { max-width: 1640px; }
 #mtSongsHint { font-size: 12px; margin: 6px 0; }
 :root[data-theme="light"] .mt-mus { color: #0b5d3a; }
 :root[data-theme="light"] .mt-mus span { text-shadow: none; }
+
+/* Version téléphone installée (écran d'accueil) : on évite l'encoche et la barre du bas. */
+@media (display-mode: standalone) {
+  .topbar { padding-top: calc(14px + env(safe-area-inset-top)); }
+}
+body { padding-bottom: env(safe-area-inset-bottom); }
+#toasts { bottom: calc(20px + env(safe-area-inset-bottom)); }
+.mt-seg .hd, .mt-mus { touch-action: none; }
+
+/* Téléphone */
+@media (pointer: coarse) { .ed-keys { display: none; } }
+@media (max-width: 900px) {
+  .ed-body > * { min-width: 0; }
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs button { flex: 1 0 auto; padding: 10px 8px; }
+}
+@media (max-width: 700px) {
+  .results-actions { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+  .results-actions > * { flex: 1 1 auto; }
+  .results-tools .minscore { flex: 1; }
+  .results-tools .minscore input { flex: 1; width: auto; }
+  #toasts { left: 12px; right: 12px; }
+  .toast { min-width: 0; max-width: none; }
+  .ed-top { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
+  .ed-top .ed-title { order: 5; flex-basis: 100%; }
+  .ed-keys { display: none; }
+  .results-tools input[type=search] { flex-basis: 100%; }
+  .ed-stage { padding: 12px; min-height: 64vh; }
+}

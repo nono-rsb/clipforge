@@ -10,6 +10,8 @@ Tout tourne **dans votre navigateur**, et aucune vidéo n'est envoyée sur Inter
 
 **Sans installation :** `ClipForge.exe` (même page) s'ouvre dans votre navigateur (Chrome ou Edge).
 
+**Sur iPhone :** ouvrez l'adresse du site (version en ligne) dans **Safari**, touchez le bouton Partager (le carré avec la flèche), puis « Sur l'écran d'accueil ». ClipForge s'ouvre alors en plein écran comme une app, marche hors connexion une fois chargé, et les exports s'enregistrent dans Photos via « Enregistrer la vidéo ». Même chose sur Android avec Chrome (« Installer l'application »).
+
 Aucun des deux n'est signé, donc Windows peut afficher « Windows a protégé votre ordinateur » : cliquez sur « Informations complémentaires », puis « Exécuter quand même ».
 
 Avec Node.js : double-cliquez sur **`Lancer ClipForge.bat`**, ou lancez `node server.js`, puis ouvrez http://localhost:5173.
@@ -60,6 +62,8 @@ N'envoie pas les dossiers `bin/` et `downloads/` (le fichier `.gitignore` s'en c
 - `js/app.js` : interface
 - `js/montage.js` : onglet Montage (timeline, silences, textes, export)
 - `js/transcribe.js` : lance Whisper (partagé entre Clipping et Montage)
+- `js/save.js` : enregistrement des exports (feuille de partage sur téléphone) et écran gardé allumé pendant l'export
+- `manifest.webmanifest`, `sw.js`, `icons/` : installation sur l'écran d'accueil et fonctionnement hors ligne
 - `js/cache.js` : analyses gardées dans le navigateur (IndexedDB)
 - `build/build-exe.js` : fabrique `ClipForge.exe` (Node SEA)
 - `desktop/` : l'app PC (Electron) : fenêtre, téléchargements, mises à jour automatiques ; `npm start` pour la lancer, `npm run dist` pour l'installateur

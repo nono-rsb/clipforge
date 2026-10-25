@@ -2,6 +2,15 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-25 (9e série) — Version téléphone (iPhone)
+
+73. Installable sur l'écran d'accueil de l'iPhone (et Android) : icône, plein écran, nom « ClipForge », barre d'état intégrée, encoche respectée
+74. Fonctionne hors connexion une fois chargée (l'app est gardée en cache, toujours mise à jour quand il y a du réseau)
+75. Sur téléphone, les exports passent par la feuille de partage : « Enregistrer la vidéo » les met directement dans Photos, ou envoi direct vers TikTok, Instagram…
+76. L'écran reste allumé pendant les exports (sinon le téléphone se met en veille et l'export s'arrête)
+77. Mise en page téléphone revue : boutons des résultats sur deux lignes, recherche pleine largeur, éditeur et onglets qui tiennent dans l'écran, messages à la largeur de l'écran, raccourcis clavier masqués
+78. Sur iPhone dans Safari, un message explique comment ajouter ClipForge à l'écran d'accueil
+
 ## 2026-10-25 (8e série) — Vraie app PC
 
 69. Application Windows (Electron) avec installateur `ClipForge-Setup.exe` : propre fenêtre, icône, raccourcis bureau et menu Démarrer, désinstallation depuis Windows

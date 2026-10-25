@@ -23,7 +23,7 @@ const DL = path.join(DATA, 'downloads');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.wasm': 'application/wasm',
-  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.webmanifest': 'application/manifest+json',
 };
 
 const YTDLP_URL = {
