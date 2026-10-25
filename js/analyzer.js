@@ -350,6 +350,8 @@ const KEYWORDS = new Set((
   'tip tips important million millions billion imagine actually literally shocking banned dangerous rich broke win lose'
 ).split(' '));
 
+export const isKeyword = w => KEYWORDS.has(norm(w));
+
 const STOP = new Set((
   'alors aussi avec avoir avait cette comme dans donc elle elles encore etait etre fait faire leur leurs mais meme parce ' +
   'plus pour quand quelque quoi sans sont suis tous tout toute toutes tres votre vous nous notre ils elle cest quil ' +

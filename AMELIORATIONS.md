@@ -2,6 +2,27 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-25 (2e série) — Montage plus complet et finitions du clipping
+
+### Montage
+31. Sous-titres automatiques (Whisper) sur tout le montage, recalés sur les coupes et les vitesses, 8 styles, position et taille
+32. Zoom par segment et effet Ken Burns (zoom lent)
+33. Animations des textes : Fondu, Pop, Glissé, Machine à écrire
+34. Chapitres YouTube générés à partir des textes, copiés en un clic
+35. Export du son seul (podcast)
+36. Image PNG de l'instant affiché
+37. Aller à la coupe précédente / suivante (↑ / ↓), bouton « Tout voir » pour ajuster le zoom de la timeline
+38. Sauvegarde automatique du projet : en rajoutant les mêmes vidéos, on reprend où on s'était arrêté
+
+### Clipping
+39. Censure des gros mots : masqués à l'écran (p****n) et bipés à l'export
+40. Mots-clés toujours en couleur dans les sous-titres
+41. Accroche proposée automatiquement (la phrase la plus accrocheuse du clip)
+42. Préréglages de style enregistrés et réutilisables d'une vidéo à l'autre
+43. Sélection de clips pour n'exporter que ceux-là
+44. Copier les titres et hashtags de tous les clips en un clic
+45. Les clips retouchés sont retrouvés quand on relance la même vidéo (avec « Nouvelle détection » pour repartir de zéro)
+
 ## 2026-10-25 — Grosse mise à jour : onglet Montage + 24 nouveautés pour le clipping
 
 ### Nouvel onglet Montage (vidéos longues)

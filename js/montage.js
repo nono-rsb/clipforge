@@ -1,9 +1,10 @@
 // Montage de vidéos longues : plusieurs vidéos sur une timeline, coupe, réorganisation,
 // suppression automatique des silences, textes, musique, transitions, export.
 // Tout se joue en direct sur un canvas ; l'export enregistre ce rendu (comme pour les clips).
-import { clamp, clamp01, fmtTime, seekTo, decodeAudio, computeEnergy } from './analyzer.js';
-import { FILTERS } from './renderer.js';
+import { clamp, clamp01, fmtTime, seekTo, decodeAudio, computeEnergy, resampleTo16k, buildWords } from './analyzer.js';
+import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer } from './renderer.js';
 import { pickMime, outputSize } from './exporter.js';
+import { transcribePcm } from './transcribe.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -17,6 +18,7 @@ const M = {
   t: 0, playing: false, k: -1,
   aspect: '16:9', quality: '1080', zoom: 40, // pixels par seconde sur la timeline
   music: null, musicVol: 0.2,
+  caps: { on: true, style: 'karaoke', pos: 0.82, size: 0.8 }, groups: [],
   exporting: false,
   undo: [], redo: [],
 };
@@ -90,6 +92,7 @@ async function addFiles(files) {
   }
   render();
   seek(M.t);
+  offerRestore();
 }
 
 async function thumbnail(m) {
@@ -102,7 +105,7 @@ async function thumbnail(m) {
 }
 
 const newSeg = (m, a, b, base = {}) => ({
-  speed: 1, vol: 1, filter: 'none', trans: 'none', layout: 'fill', ...base, id: id('s'), mid: m.id, a, b,
+  speed: 1, vol: 1, filter: 'none', trans: 'none', layout: 'fill', zoom: 1, kb: false, ...base, id: id('s'), mid: m.id, a, b,
 });
 const mediaOf = s => M.media.find(m => m.id === s.mid);
 const segDur = s => (s.b - s.a) / s.speed;
@@ -229,7 +232,9 @@ function draw() {
     if (el.videoWidth) {
       ctx.save();
       ctx.filter = FILTERS[s.filter]?.css || 'none';
-      if (s.layout === 'fit') drawFit(el, W, H); else drawFill(el, W, H);
+      // Effet Ken Burns : zoom lent et continu sur toute la durée du segment.
+      const z = (s.zoom || 1) * (s.kb ? 1 + 0.15 * clamp01(local / d) : 1);
+      if (s.layout === 'fit') drawFit(el, W, H); else drawFill(el, W, H, z);
       ctx.restore();
     }
     // Transition « fondu » : noir à l'entrée de ce segment et à la sortie du précédent.
@@ -244,6 +249,11 @@ function draw() {
     const g = gainFor(M.k);
     if (g) g.gain.value = s.vol * (1 - black);
   }
+  if (M.caps.on && M.groups.length) {
+    drawCaptionLayer(ctx, M.groups, M.t, {
+      capStyle: M.caps.style, capSize: M.caps.size, capPos: M.caps.pos, uppercase: true, emojis: true, capFont: 'montserrat', emojiSize: 0.8,
+    }, W, H);
+  }
   M.texts.forEach(tx => { if (M.t >= tx.t && M.t <= tx.t + tx.dur) drawText(tx, W, H); });
   if (musicGain) musicGain.gain.value = M.music ? M.musicVol : 0;
   $('#mtCur').textContent = fmtTime(M.t);
@@ -257,10 +267,11 @@ function draw() {
   }
 }
 
-function drawFill(el, W, H) {
+function drawFill(el, W, H, zoom = 1) {
   const vw = el.videoWidth, vh = el.videoHeight, r = W / H;
   let sw = vw, sh = vh;
   if (vw / vh > r) sw = vh * r; else sh = vw / r;
+  sw /= zoom; sh /= zoom;
   ctx.drawImage(el, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, W, H);
 }
 
@@ -277,6 +288,8 @@ function drawFit(el, W, H) {
   ctx.drawImage(el, (W - vw * sc) / 2, (H - vh * sc) / 2, vw * sc, vh * sc);
 }
 
+export const TEXT_ANIMS = { fade: 'Fondu', pop: 'Pop', slide: 'Glissé', type: 'Machine à écrire' };
+
 export const TEXT_STYLES = {
   title: 'Titre',
   box: 'Encadré',
@@ -287,8 +300,20 @@ function drawText(tx, W, H) {
   const dt = M.t - tx.t;
   const alpha = Math.min(clamp01(dt / 0.25), clamp01((tx.dur - dt) / 0.25));
   const size = Math.round(Math.min(W, H) * 0.075 * tx.size);
+  const anim = tx.anim || 'fade';
+  const inP = 1 - (1 - clamp01(dt / 0.35)) ** 3;
   ctx.save();
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = anim === 'type' ? clamp01((tx.dur - dt) / 0.25) : alpha;
+  if (anim === 'pop') {
+    const k = 0.6 + 0.4 * inP + 0.06 * Math.sin(Math.min(1, dt / 0.35) * Math.PI);
+    ctx.translate(W / 2, H * tx.y); ctx.scale(k, k); ctx.translate(-W / 2, -H * tx.y);
+  } else if (anim === 'slide') ctx.translate((1 - inP) * -W * 0.25, 0);
+  if (anim === 'type') {
+    // Machine à écrire : les lettres apparaissent une à une.
+    const n = Math.floor(dt * 22);
+    tx = { ...tx, text: tx.text.slice(0, n) };
+    if (!tx.text) { ctx.restore(); return; }
+  }
   ctx.font = `900 ${size}px Montserrat, "Arial Black", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -377,7 +402,7 @@ function duplicate() {
 
 function addText() {
   snapshot();
-  const tx = { id: id('t'), text: 'Ton texte ici', t: M.t, dur: 4, y: 0.15, size: 1, style: 'title', color: '#ffffff' };
+  const tx = { id: id('t'), text: 'Ton texte ici', t: M.t, dur: 4, y: 0.15, size: 1, style: 'title', color: '#ffffff', anim: 'fade' };
   M.texts.push(tx);
   M.sel = { kind: 'text', id: tx.id };
   render();
@@ -436,7 +461,7 @@ async function removeSilences(all) {
 
 let exportDone = null;
 
-async function exportVideo() {
+async function exportVideo(audioOnly = false) {
   if (!M.segs.length) { ui.toast('Ajoute au moins une vidéo.', 'err'); return; }
   if (M.exporting) return;
   audio();
@@ -445,11 +470,13 @@ async function exportVideo() {
   pause();
   sizeCanvas(M.quality);
   const [W, H] = [canvas.width, canvas.height];
-  const stream = new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...recDest.stream.getAudioTracks()]);
-  const mime = pickMime();
+  const stream = new MediaStream([...(audioOnly ? [] : canvas.captureStream(30).getVideoTracks()), ...recDest.stream.getAudioTracks()]);
+  const mime = audioOnly
+    ? ['audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm'].find(m => MediaRecorder.isTypeSupported(m)) || ''
+    : pickMime();
   const rec = new MediaRecorder(stream, {
     ...(mime ? { mimeType: mime } : {}),
-    videoBitsPerSecond: Math.round(10_000_000 * (W * H) / (1080 * 1920)),
+    ...(audioOnly ? {} : { videoBitsPerSecond: Math.round(10_000_000 * (W * H) / (1080 * 1920)) }),
     audioBitsPerSecond: 192_000,
   });
   const chunks = [];
@@ -458,7 +485,7 @@ async function exportVideo() {
   speaker.gain.value = 0;
   const t = ui.toast('', '', 0);
   const progress = setInterval(() => {
-    t.textContent = `⏺ Export du montage — ${Math.round(100 * M.t / total())} % · reste ~${fmtTime(total() - M.t)} (gardez l'onglet visible)`;
+    t.textContent = `⏺ Export ${audioOnly ? 'du son' : 'du montage'} — ${Math.round(100 * M.t / total())} % · reste ~${fmtTime(total() - M.t)} (gardez l'onglet visible)`;
   }, 400);
   await new Promise(r => { exportDone = r; seekTo(elFor(0), M.segs[0].a).then(() => { M.t = 0; draw(); rec.start(500); play(); }); });
   await new Promise(r => setTimeout(r, 150));
@@ -470,14 +497,46 @@ async function exportVideo() {
   M.exporting = false;
   sizeCanvas('preview');
   draw();
-  const type = (mime || 'video/webm').split(';')[0];
+  const type = (mime || (audioOnly ? 'audio/webm' : 'video/webm')).split(';')[0];
+  const ext = audioOnly ? (type.includes('mp4') ? 'm4a' : 'weba') : (type.includes('mp4') ? 'mp4' : 'webm');
+  download(new Blob(chunks, { type }), `montage_${new Date().toISOString().slice(0, 10)}.${ext}`);
+  ui.toast(audioOnly ? '✅ Son exporté' : '✅ Montage exporté', 'ok');
+  ui.notify(audioOnly ? 'Son du montage exporté' : 'Montage exporté');
+}
+
+function download(blob, name) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(chunks, { type }));
-  a.download = `montage_${new Date().toISOString().slice(0, 10)}.${type.includes('mp4') ? 'mp4' : 'webm'}`;
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
-  ui.toast('✅ Montage exporté', 'ok');
-  ui.notify('Montage exporté');
+}
+
+function exportFrame() {
+  if (!M.segs.length) return;
+  sizeCanvas(M.quality);
+  draw();
+  canvas.toBlob(b => download(b, `image_${fmtTime(M.t).replace(/:/g, '-')}.png`), 'image/png');
+  sizeCanvas('preview');
+  draw();
+}
+
+// Chapitres YouTube : un par texte ajouté (YouTube exige un premier chapitre à 0:00).
+async function copyChapters() {
+  const list = [...M.texts].sort((a, b) => a.t - b.t).map(tx => [tx.t, tx.text.split('\n')[0].trim()]).filter(([, l]) => l);
+  if (!list.length) { ui.toast('Ajoute des textes (T) aux débuts de parties : chacun devient un chapitre.', '', 5000); return; }
+  if (list[0][0] > 1) list.unshift([0, 'Introduction']);
+  else list[0][0] = 0;
+  const txt = list.map(([t, l]) => `${fmtTime(t)} ${l}`).join('\n');
+  try { await navigator.clipboard.writeText(txt); ui.toast('📑 Chapitres copiés : colle-les dans la description YouTube', 'ok', 4000); }
+  catch { ui.toast(txt, '', 10000); }
+}
+
+// Coupe précédente / suivante (début des segments).
+function jumpCut(dir) {
+  const cuts = M.segs.map((_, k) => startOf(k)).concat(total());
+  const next = dir > 0 ? cuts.find(c => c > M.t + 0.05) : [...cuts].reverse().find(c => c < M.t - 0.05);
+  if (next !== undefined) seek(next);
 }
 
 function finishExport() {
@@ -486,7 +545,99 @@ function finishExport() {
 
 /* ---------------- Interface ---------------- */
 
+// Mots de chaque vidéo replacés sur le temps de la timeline (coupes et vitesses comprises).
+function buildCaptions() {
+  const words = [];
+  let t0 = 0;
+  for (const s of M.segs) {
+    const m = mediaOf(s);
+    for (const w of m.words || []) {
+      if (w.s >= s.a - 0.05 && w.e <= s.b + 0.2) words.push({ w: w.w, s: t0 + (Math.max(w.s, s.a) - s.a) / s.speed, e: t0 + (Math.min(w.e, s.b) - s.a) / s.speed });
+    }
+    t0 += segDur(s);
+  }
+  M.groups = groupWords(words, 3);
+}
+
+async function transcribeAll() {
+  if (!M.media.length) return;
+  const status = $('#mtAsrStatus');
+  const btn = $('#mtTranscribe');
+  btn.disabled = true;
+  try {
+    for (const [i, m] of M.media.entries()) {
+      if (m.words) continue;
+      const tag = M.media.length > 1 ? `Vidéo ${i + 1}/${M.media.length} · ` : '';
+      status.textContent = `${tag}Lecture du son…`;
+      const pcm = await resampleTo16k(await decodeAudio(m.file));
+      const segs = await transcribePcm(pcm, $('#mtModel').value, $('#mtLang').value, txt => { status.textContent = tag + txt; });
+      m.words = buildWords(segs);
+    }
+    buildCaptions();
+    const n = M.media.reduce((a, m) => a + (m.words?.length || 0), 0);
+    status.textContent = n ? `✅ ${n} mots transcrits` : 'Aucune parole reconnue (vérifie la langue).';
+    draw();
+    ui.notify('Sous-titres du montage prêts');
+  } catch (e) {
+    console.error(e);
+    status.textContent = `Transcription impossible : ${e.message} (connexion requise la 1re fois)`;
+  } finally { btn.disabled = false; }
+}
+
+/* ---------------- Sauvegarde automatique du projet ---------------- */
+
+// Le projet (coupes, textes, réglages) est gardé dans le navigateur ; il revient quand on
+// rajoute les mêmes vidéos. Les vidéos elles-mêmes ne sont jamais copiées.
+const mediaKey = m => `${m.name}|${m.file.size}`;
+let saveTimer = 0;
+function autosave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    if (!M.segs.length) return;
+    const keys = M.media.map(mediaKey);
+    const data = {
+      media: keys, aspect: M.aspect, caps: M.caps, fadeIn: M.fadeIn, fadeOut: M.fadeOut, texts: M.texts,
+      segs: M.segs.map(({ mid, id: _, ...s }) => ({ ...s, m: keys[M.media.findIndex(x => x.id === mid)] })),
+    };
+    try { localStorage.setItem('clipforge.montage', JSON.stringify(data)); } catch {}
+  }, 800);
+}
+
+function offerRestore() {
+  let data;
+  try { data = JSON.parse(localStorage.getItem('clipforge.montage') || 'null'); } catch { return; }
+  if (!data?.segs?.length) return;
+  const byKey = new Map(M.media.map(m => [mediaKey(m), m]));
+  if (!data.media.every(k => byKey.has(k))) return;
+  // Seulement si la timeline est encore « brute » (une vidéo entière par segment).
+  if (M.segs.length !== M.media.length || M.texts.length) return;
+  const t = ui.toast('♻ Projet précédent retrouvé pour ces vidéos. ', 'ok', 12000);
+  const b = document.createElement('button');
+  b.className = 'btn ghost sm';
+  b.textContent = 'Reprendre';
+  b.onclick = () => {
+    snapshot();
+    M.segs = data.segs.map(({ m, ...s }) => ({ ...s, id: id('s'), mid: byKey.get(m).id }));
+    M.texts = data.texts || [];
+    Object.assign(M, { aspect: data.aspect || M.aspect, caps: { ...M.caps, ...data.caps }, fadeIn: data.fadeIn, fadeOut: data.fadeOut });
+    t.remove();
+    syncCapsUi();
+    render();
+    seek(0);
+  };
+  t.append(b);
+}
+
+function syncCapsUi() {
+  $('#mtCapsOn').checked = M.caps.on;
+  $('#mtCapStyle').value = M.caps.style;
+  $('#mtCapPos').value = M.caps.pos;
+  $('#mtCapSize').value = M.caps.size;
+}
+
 function render() {
+  buildCaptions();
+  autosave();
   $('#mtEmpty').classList.toggle('hidden', M.media.length > 0);
   // Bibliothèque
   $('#mtMedia').innerHTML = '';
@@ -599,6 +750,8 @@ function inspector() {
       <div class="field"><div class="label">Volume <b id="mtVolV">${Math.round(x.vol * 100)} %</b></div><input type="range" id="mtVol" min="0" max="2" step="0.05" value="${x.vol}"></div>
       <div class="field"><div class="label">Filtre</div><div class="chips" id="mtFilter">${Object.entries(FILTERS).map(([k, f]) => `<button data-v="${k}" class="${k === x.filter ? 'on' : ''}">${f.label}</button>`).join('')}</div></div>
       <div class="field"><div class="label">Transition avant ce segment</div><div class="chips" id="mtTrans"><button data-v="none" class="${x.trans !== 'fade' ? 'on' : ''}">Coupe franche</button><button data-v="fade" class="${x.trans === 'fade' ? 'on' : ''}">◐ Fondu au noir</button></div></div>
+      <div class="field"><div class="label">Zoom <b id="mtZv">${(x.zoom || 1).toFixed(2)}×</b></div><input type="range" id="mtZ" min="1" max="2.5" step="0.05" value="${x.zoom || 1}"></div>
+      <label class="switch-row"><span><span class="label">Effet Ken Burns</span><small>Zoom lent et continu, idéal sur un plan fixe</small></span><input type="checkbox" id="mtKb" ${x.kb ? 'checked' : ''}><span class="switch"></span></label>
       <div class="field"><div class="label">Mise en page</div><div class="chips" id="mtLayout"><button data-v="fill" class="${x.layout === 'fill' ? 'on' : ''}">Remplir</button><button data-v="fit" class="${x.layout === 'fit' ? 'on' : ''}">Ajusté + fond flou</button></div></div>
       <button class="btn ghost sm" id="mtApplyAll">Appliquer vitesse, volume, filtre et mise en page à tous</button>`;
     const range = (idr, key, lbl) => {
@@ -626,11 +779,14 @@ function inspector() {
     chips('#mtFilter', 'filter');
     chips('#mtTrans', 'trans');
     chips('#mtLayout', 'layout');
+    $('#mtZ').addEventListener('pointerdown', snapshot, { once: true });
+    $('#mtZ').addEventListener('input', e => { x.zoom = +e.target.value; $('#mtZv').textContent = `${x.zoom.toFixed(2)}×`; draw(); });
+    $('#mtKb').addEventListener('change', e => { snapshot(); x.kb = e.target.checked; draw(); });
     $('#mtVol').addEventListener('pointerdown', snapshot, { once: true });
     $('#mtVol').addEventListener('input', e => { x.vol = +e.target.value; $('#mtVolV').textContent = `${Math.round(x.vol * 100)} %`; });
     $('#mtApplyAll').addEventListener('click', () => {
       snapshot();
-      M.segs.forEach(s => { s.speed = x.speed; s.vol = x.vol; s.filter = x.filter; s.layout = x.layout; });
+      M.segs.forEach(s => { s.speed = x.speed; s.vol = x.vol; s.filter = x.filter; s.layout = x.layout; s.zoom = x.zoom; s.kb = x.kb; });
       render();
       seek(M.t);
       ui.toast('Réglages appliqués à tous les segments', 'ok', 2000);
@@ -639,6 +795,7 @@ function inspector() {
     box.innerHTML = `<h3>Texte</h3>
       <div class="field"><textarea id="mtTextInput" rows="3"></textarea></div>
       <div class="field"><div class="label">Style</div><div class="chips" id="mtTStyle">${Object.entries(TEXT_STYLES).map(([k, l]) => `<button data-v="${k}" class="${k === x.style ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      <div class="field"><div class="label">Animation</div><div class="chips" id="mtTAnim">${Object.entries(TEXT_ANIMS).map(([k, l]) => `<button data-v="${k}" class="${k === (x.anim || 'fade') ? 'on' : ''}">${l}</button>`).join('')}</div></div>
       <div class="row2"><div class="field"><div class="label">Début (s)</div><input type="number" class="input" id="mtTt" min="0" step="0.1" value="${x.t.toFixed(1)}"></div>
       <div class="field"><div class="label">Durée (s)</div><input type="number" class="input" id="mtTd" min="0.5" step="0.5" value="${x.dur}"></div></div>
       <div class="field"><div class="label">Position verticale</div><input type="range" id="mtTy" min="0.08" max="0.92" step="0.01" value="${x.y}"></div>
@@ -659,6 +816,14 @@ function inspector() {
       x.style = b.dataset.v;
       inspector();
       draw();
+    });
+    $('#mtTAnim').addEventListener('click', e => {
+      const b = e.target.closest('button[data-v]');
+      if (!b) return;
+      snapshot();
+      x.anim = b.dataset.v;
+      inspector();
+      seek(x.t);
     });
     if (M.t < x.t || M.t > x.t + x.dur) seek(x.t + 0.3);
   }
@@ -694,7 +859,22 @@ export function initMontage(helpers) {
   $('#mtRedo').addEventListener('click', redo);
   $('#mtSilence').addEventListener('click', () => removeSilences(false));
   $('#mtSilenceAll').addEventListener('click', () => removeSilences(true));
-  $('#mtExport').addEventListener('click', exportVideo);
+  $('#mtExport').addEventListener('click', () => exportVideo(false));
+  $('#mtAudio').addEventListener('click', () => exportVideo(true));
+  $('#mtFrame').addEventListener('click', exportFrame);
+  $('#mtChapters').addEventListener('click', copyChapters);
+  $('#mtTranscribe').addEventListener('click', transcribeAll);
+  $('#mtCapStyle').innerHTML = Object.entries(CAPTION_STYLES).map(([k, st]) => `<option value="${k}">${st.label}</option>`).join('');
+  $('#mtCapsOn').addEventListener('change', e => { M.caps.on = e.target.checked; autosave(); draw(); });
+  $('#mtCapStyle').addEventListener('change', e => { M.caps.style = e.target.value; autosave(); draw(); });
+  $('#mtCapPos').addEventListener('input', e => { M.caps.pos = +e.target.value; autosave(); draw(); });
+  $('#mtCapSize').addEventListener('input', e => { M.caps.size = +e.target.value; autosave(); draw(); });
+  $('#mtFit').addEventListener('click', () => {
+    M.zoom = clamp(($('#mtTimeline').clientWidth - 60) / Math.max(1, total()), 2, 200);
+    $('#mtZoom').value = M.zoom;
+    render();
+    draw();
+  });
   $('#mtZoom').addEventListener('input', e => { M.zoom = +e.target.value; render(); draw(); });
   $('#mtSilThr').addEventListener('input', e => { $('#mtSilThrV').textContent = `${Math.round(e.target.value * 100)} %`; });
   $('#mtSilMin').addEventListener('input', e => { $('#mtSilMinV').textContent = `${(+e.target.value).toFixed(1)} s`; });
@@ -702,6 +882,7 @@ export function initMontage(helpers) {
     const b = e.target.closest('button[data-v]');
     if (!b) return;
     M.aspect = b.dataset.v;
+    if (M.caps.pos === 0.82 || M.caps.pos === 0.7) { M.caps.pos = M.aspect === '16:9' ? 0.82 : 0.7; syncCapsUi(); }
     render();
     draw();
   });
@@ -754,7 +935,8 @@ export function initMontage(helpers) {
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault();
       seek(M.t + (e.shiftKey ? 5 : 1) * (e.key === 'ArrowLeft' ? -1 : 1));
-    } else if (e.key === 'Home') seek(0);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); jumpCut(e.key === 'ArrowDown' ? 1 : -1); }
+    else if (e.key === 'Home') seek(0);
     else if (e.key === 'End') seek(total());
   });
   window.addEventListener('resize', () => M.media.length && render());

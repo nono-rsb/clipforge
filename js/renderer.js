@@ -1,5 +1,5 @@
 // Rendu d'une image de clip : recadrage, fond flou, sous-titres animés, titre d'accroche.
-import { clamp, clamp01 } from './analyzer.js';
+import { clamp, clamp01, norm, isKeyword } from './analyzer.js';
 import { emojiFor } from './emoji.js';
 
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
@@ -46,6 +46,12 @@ export const FILTERS = {
   bw: { label: 'N&B', css: 'grayscale(1) contrast(1.15)' },
 };
 
+// Gros mots masqués (« p****n ») et bipés à l'export quand l'option est active.
+const SWEARS = new Set(('putain putains merde merdes connard connards connasse salope salopes encule enculer enculé batard batards fdp pute putes '
+  + 'niquer nique ntm bordel couille couilles fuck fucking fucked shit bullshit bitch bitches asshole motherfucker dick bastard').split(' ').map(norm));
+export const isSwear = w => SWEARS.has(norm(w));
+const mask = t => (t.length <= 2 ? '*'.repeat(t.length) : t[0] + '*'.repeat(t.length - 2) + t.at(-1));
+
 export const HOOK_THEMES = {
   light: { bg: '#fff', fg: '#111' },
   dark: { bg: '#111', fg: '#fff' },
@@ -68,6 +74,9 @@ export function groupWords(words, maxWords = 3) {
 
 const bg = document.createElement('canvas');
 const bgx = bg.getContext('2d');
+
+// Sous-titres seuls, réutilisés par l'onglet Montage.
+export function drawCaptionLayer(ctx, groups, t, o, W, H) { drawCaptions(ctx, groups, t, o, W, H); }
 
 export function renderFrame(ctx, video, clip, t, env) {
   const { width: W, height: H } = ctx.canvas;
@@ -215,7 +224,10 @@ function drawCaptions(ctx, groups, t, o, W, H) {
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
   ctx.lineJoin = 'round';
-  const toks = g.words.map(w => ({ w, text: o.uppercase ? w.w.toUpperCase() : w.w }));
+  const toks = g.words.map(w => {
+    const raw = o.censor && isSwear(w.w) ? w.w.replace(/[\p{L}]+/u, mask) : w.w;
+    return { w, text: o.uppercase ? raw.toUpperCase() : raw };
+  });
   toks.forEach(k => { k.width = ctx.measureText(k.text).width; });
   // Le style Impact grossit le mot actif : on espace davantage pour qu'il ne touche pas ses voisins.
   const space = base * (o.capStyle === 'impact' || o.capStyle === 'beast' ? 0.45 : 0.28), maxW = W * 0.86;
@@ -232,6 +244,8 @@ function drawCaptions(ctx, groups, t, o, W, H) {
   ctx.translate(W / 2, H * o.capPos);
   ctx.scale(sc, sc);
   const accent = accentOf(o);
+  // Mots-clés toujours en couleur (seconde couleur, pour rester distincte du mot prononcé).
+  const kwColor = accent.toUpperCase() === '#FF4FD8' ? '#22D38A' : '#FF4FD8';
   lines.forEach((line, li) => {
     const width = line.reduce((a, k, i) => a + k.width + (i ? space : 0), 0);
     const y = (li - (lines.length - 1) / 2) * base * 1.18;
@@ -244,7 +258,7 @@ function drawCaptions(ctx, groups, t, o, W, H) {
         const pop = o.capStyle === 'pop' ? 0.7 + 0.3 * (1 - (1 - clamp01((t - k.w.s) / 0.12)) ** 3) : 1;
         ctx.save();
         if (pop !== 1) { ctx.translate(x + k.width / 2, y); ctx.scale(pop, pop); ctx.translate(-(x + k.width / 2), -y); }
-        drawWord(ctx, o.capStyle, k.text, x, y, k.width, base, active, accent);
+        drawWord(ctx, o.capStyle, k.text, x, y, k.width, base, active, accent, o.highlight && !active && isKeyword(k.w.w) ? kwColor : null);
         ctx.restore();
       }
       x += k.width + space;
@@ -273,7 +287,7 @@ function drawCaptions(ctx, groups, t, o, W, H) {
   ctx.restore();
 }
 
-function drawWord(ctx, style, text, x, y, w, base, active, accent) {
+function drawWord(ctx, style, text, x, y, w, base, active, accent, kw = null) {
   ctx.save();
   if (style === 'box' && active) {
     ctx.fillStyle = accent;
@@ -290,7 +304,7 @@ function drawWord(ctx, style, text, x, y, w, base, active, accent) {
     ctx.shadowColor = 'rgba(0,0,0,.75)';
     ctx.shadowBlur = base * 0.25;
     ctx.shadowOffsetY = base * 0.05;
-    ctx.fillStyle = active ? '#fff' : 'rgba(255,255,255,.72)';
+    ctx.fillStyle = kw || (active ? '#fff' : 'rgba(255,255,255,.72)');
     ctx.fillText(text, x, y);
     ctx.restore();
     return;
@@ -304,7 +318,7 @@ function drawWord(ctx, style, text, x, y, w, base, active, accent) {
   ctx.lineWidth = base * (style === 'impact' ? 0.22 : style === 'beast' ? 0.28 : 0.16);
   ctx.strokeText(text, x, y);
   if (style === 'neon' && active) { ctx.shadowColor = accent; ctx.shadowBlur = base * 0.5; }
-  ctx.fillStyle = active && style !== 'box' ? accent : '#fff';
+  ctx.fillStyle = active && style !== 'box' ? accent : kw || '#fff';
   ctx.fillText(text, x, y);
   ctx.restore();
 }

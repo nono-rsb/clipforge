@@ -28,10 +28,11 @@ L'import par lien (YouTube…) marche avec l'exe et avec Node.js, mais pas sur l
 | Titre d'accroche | Bandeau affiché pendant les 3 premières secondes |
 | Éditeur | Découpe ±30 s avec forme d'onde, légende et hashtags suggérés, « appliquer à tous », raccourcis clavier (Espace, ←/→, I/O, M) |
 | Effets | Filtres couleur (Vif, Cinéma, Chaud, Froid, N&B), vitesse 1× à 1,5×, volume de la voix, fondu d'entrée et de sortie, musique de fond, filigrane @pseudo |
-| Accroche | Texte, couleurs (blanc, noir, jaune), durée 2 à 5 s, miniature PNG |
-| Résultats | Recherche d'un mot dans la transcription (crée un clip autour), clip manuel, dupliquer, supprimer (avec annulation), filtre par score, tri par score, date ou durée |
+| Accroche | Texte (ou proposé automatiquement), couleurs (blanc, noir, jaune), durée 2 à 5 s, miniature PNG |
+| Sous-titres malins | Mots-clés toujours en couleur, censure des gros mots (masqués et bipés), préréglages de style enregistrés |
+| Résultats | Recherche d'un mot dans la transcription (crée un clip autour), clip manuel, dupliquer, supprimer (avec annulation), sélection pour l'export, copie de toutes les légendes, clips retouchés retrouvés à la relance, filtre par score, tri par score, date ou durée |
 | Rapidité | L'analyse est gardée dans le navigateur : relancer la même vidéo est instantané. Notification quand l'analyse ou l'export finit, temps restant pendant l'export |
-| **Montage** (onglet) | Plusieurs vidéos sur une timeline avec miniatures, zoom, glisser-déposer pour réordonner, couper (S), supprimer, dupliquer, annuler/rétablir. **Retrait automatique des silences** (seuil et durée réglables). Par segment : début/fin, vitesse 0,5× à 2×, volume, filtre, fondu au noir, mise en page remplie ou ajustée. Textes (Titre, Encadré, Bandeau) glissables dans le temps, musique de fond, fondus de début et de fin, export 16:9, 9:16, 1:1 ou 4:5 en 1080p/720p |
+| **Montage** (onglet) | Plusieurs vidéos sur une timeline avec miniatures, zoom, glisser-déposer pour réordonner, couper (S), supprimer, dupliquer, annuler/rétablir. **Retrait automatique des silences** (seuil et durée réglables). Par segment : début/fin, vitesse 0,5× à 2×, volume, filtre, fondu au noir, mise en page remplie ou ajustée. Textes (Titre, Encadré, Bandeau ; animations Fondu, Pop, Glissé, Machine à écrire) glissables dans le temps, **sous-titres automatiques**, zoom et effet Ken Burns, chapitres YouTube, export du son seul ou d'une image, sauvegarde automatique du projet, musique de fond, fondus de début et de fin, export 16:9, 9:16, 1:1 ou 4:5 en 1080p/720p |
 | Export | MP4 (ou WebM selon le navigateur) en 1080p ou 720p, un clip ou tous d'un coup |
 
 ## Bon à savoir
@@ -53,5 +54,6 @@ N'envoie pas les dossiers `bin/` et `downloads/` (le fichier `.gitignore` s'en c
 - `js/whisper-worker.js` : transcription Whisper (Transformers.js)
 - `js/app.js` : interface
 - `js/montage.js` : onglet Montage (timeline, silences, textes, export)
+- `js/transcribe.js` : lance Whisper (partagé entre Clipping et Montage)
 - `js/cache.js` : analyses gardées dans le navigateur (IndexedDB)
 - `build/build-exe.js` : fabrique `ClipForge.exe` (Node SEA). GitHub le fait tout seul à chaque tag `v*` (`.github/workflows/exe.yml`)

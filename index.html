@@ -187,6 +187,7 @@
             <option value="time">Trier : chronologique</option>
             <option value="length">Trier : durée</option>
           </select>
+          <button id="copyAll" class="btn ghost" title="Titres et hashtags de tous les clips">📋 Légendes</button>
           <button id="newVideo" class="btn ghost">Nouvelle vidéo</button>
           <button id="exportAll" class="btn primary">⬇ Tout exporter</button>
         </div>
@@ -212,6 +213,9 @@
             <button data-v="16:9">16:9</button><button data-v="9:16">9:16</button><button data-v="1:1">1:1</button><button data-v="4:5">4:5</button>
           </div>
           <select id="mtQuality"><option value="1080">1080p</option><option value="720">720p</option></select>
+          <button id="mtChapters" class="btn ghost" title="Copier les chapitres YouTube (à partir des textes)">📑 Chapitres</button>
+          <button id="mtFrame" class="btn ghost" title="Enregistrer l'image affichée en PNG">🖼</button>
+          <button id="mtAudio" class="btn ghost" title="Exporter seulement le son (podcast)">🎧 Son seul</button>
           <button id="mtExport" class="btn primary" disabled>⬇ Exporter la vidéo</button>
         </div>
       </div>
@@ -229,6 +233,24 @@
             <input id="mtMusicInput" type="file" accept="audio/*" hidden>
           </div>
           <div class="field"><div class="label">Volume de la musique</div><input type="range" id="mtMusicVol" min="0" max="1" step="0.01" value="0.2"></div>
+          <h3>Sous-titres</h3>
+          <div class="row2">
+            <select id="mtLang">
+              <option value="fr">Français</option><option value="en">Anglais</option><option value="es">Espagnol</option>
+              <option value="de">Allemand</option><option value="it">Italien</option><option value="pt">Portugais</option><option value="auto">Auto</option>
+            </select>
+            <select id="mtModel">
+              <option value="onnx-community/whisper-tiny">Rapide</option>
+              <option value="onnx-community/whisper-base" selected>Équilibré</option>
+              <option value="onnx-community/whisper-small">Précis</option>
+            </select>
+          </div>
+          <button id="mtTranscribe" class="btn ghost sm wide">💬 Générer les sous-titres</button>
+          <small id="mtAsrStatus" class="muted mt-status"></small>
+          <label class="switch-row"><span class="label">Afficher</span><input type="checkbox" id="mtCapsOn" checked><span class="switch"></span></label>
+          <div class="field"><div class="label">Style</div><select id="mtCapStyle"></select></div>
+          <div class="field"><div class="label">Position</div><input type="range" id="mtCapPos" min="0.15" max="0.92" step="0.01" value="0.82"></div>
+          <div class="field"><div class="label">Taille</div><input type="range" id="mtCapSize" min="0.5" max="1.6" step="0.05" value="0.8"></div>
           <h3>Silences</h3>
           <div class="field"><div class="label">Seuil <b id="mtSilThrV">22 %</b></div><input type="range" id="mtSilThr" min="0.05" max="0.5" step="0.01" value="0.22"></div>
           <div class="field"><div class="label">Silence minimum <b id="mtSilMinV">0.6 s</b></div><input type="range" id="mtSilMin" min="0.3" max="2" step="0.1" value="0.6"></div>
@@ -258,7 +280,7 @@
             </div>
             <button id="mtMute" class="round sm" title="Son">🔊</button>
           </div>
-          <div class="mt-zoom"><span class="muted">Zoom</span><input type="range" id="mtZoom" min="2" max="200" value="40"></div>
+          <div class="mt-zoom"><span class="muted">Zoom</span><input type="range" id="mtZoom" min="2" max="200" value="40"><button id="mtFit" class="btn ghost sm">↔ Tout voir</button></div>
           <div id="mtTimeline" class="mt-timeline">
             <div id="mtInner" class="mt-inner">
               <div id="mtRuler" class="mt-ruler"></div>
@@ -267,7 +289,7 @@
               <div id="mtPlayhead" class="mt-playhead"></div>
             </div>
           </div>
-          <p class="ed-keys muted">Raccourcis : <kbd>Espace</kbd> lecture · <kbd>S</kbd> couper · <kbd>Suppr</kbd> supprimer · <kbd>T</kbd> texte · <kbd>←</kbd><kbd>→</kbd> ±1 s · <kbd>Ctrl+Z</kbd> annuler · glisser un segment pour le déplacer</p>
+          <p class="ed-keys muted">Raccourcis : <kbd>Espace</kbd> lecture · <kbd>S</kbd> couper · <kbd>Suppr</kbd> supprimer · <kbd>T</kbd> texte · <kbd>←</kbd><kbd>→</kbd> ±1 s · <kbd>↑</kbd><kbd>↓</kbd> coupe précédente / suivante · <kbd>Ctrl+Z</kbd> annuler · glisser un segment pour le déplacer</p>
         </div>
 
         <aside id="mtInspect" class="panel mt-inspect"></aside>
@@ -412,9 +434,25 @@
             <div class="label">Taille des emojis</div>
             <input type="range" id="emojiSize" min="0.5" max="1.8" step="0.05">
           </div>
+          <label class="switch-row">
+            <span><span class="label">Mots-clés en couleur</span><small>« argent », « secret », « erreur »… restent colorés</small></span>
+            <input type="checkbox" data-bool="highlight"><span class="switch"></span>
+          </label>
+          <label class="switch-row">
+            <span><span class="label">Censurer les gros mots 🤬</span><small>Masqués à l'écran (p****n) et bipés dans la vidéo</small></span>
+            <input type="checkbox" data-bool="censor"><span class="switch"></span>
+          </label>
           <div class="field">
             <div class="label">Texte (corrigez les erreurs de transcription)</div>
             <textarea id="edText" rows="7" spellcheck="true" placeholder="Aucune transcription — activez « Sous-titres IA » à l'import, ou tapez le texte ici."></textarea>
+          </div>
+          <div class="field">
+            <div class="label">Mes préréglages</div>
+            <div class="preset-row">
+              <select id="presetList"><option value="">— Choisir un préréglage —</option></select>
+              <button class="btn ghost sm" id="presetSave" title="Enregistrer le style actuel">💾</button>
+              <button class="btn ghost sm icon" id="presetDel" title="Supprimer le préréglage choisi">🗑</button>
+            </div>
           </div>
           <div class="btn-row">
             <button class="btn ghost sm" id="applyAll">Appliquer ce style à tous les clips</button>
@@ -472,6 +510,7 @@
           <div class="field">
             <div class="label">Texte de l'accroche</div>
             <textarea id="hookText" rows="3" placeholder="Laissez vide pour utiliser le titre du clip"></textarea>
+            <button class="btn ghost sm" id="hookSuggest">✨ Proposer une accroche</button>
           </div>
           <div class="field">
             <div class="label">Couleurs</div>

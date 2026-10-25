@@ -1,6 +1,6 @@
 // Export d'un clip : rendu image par image sur un canvas + audio d'origine → MediaRecorder.
 import { seekTo } from './analyzer.js';
-import { renderFrame, ASPECTS } from './renderer.js';
+import { renderFrame, ASPECTS, isSwear } from './renderer.js';
 
 const MIMES = [
   'video/mp4;codecs=avc1.640028,mp4a.40.2',
@@ -43,7 +43,9 @@ export async function exportClip({ url, clip, env, quality = '1080', music = nul
   const dest = ac.createMediaStreamDestination();
   const voice = ac.createGain();
   voice.gain.value = o.volume ?? 1;
-  ac.createMediaElementSource(v).connect(voice).connect(dest);
+  const bleep = ac.createGain();
+  ac.createMediaElementSource(v).connect(voice).connect(bleep).connect(dest);
+  const swears = o.censor ? (clip.words || []).filter(w => isSwear(w.w) && w.e > clip.start && w.s < clip.end) : [];
 
   // Musique de fond en boucle, mixée sous la voix.
   let m = null;
@@ -76,6 +78,20 @@ export async function exportClip({ url, clip, env, quality = '1080', music = nul
     voice.gain.linearRampToValueAtTime(o.volume ?? 1, now + 0.4);
     voice.gain.setValueAtTime(o.volume ?? 1, now + Math.max(0.4, real - 0.4));
     voice.gain.linearRampToValueAtTime(0, now + real);
+  }
+  if (swears.length) {
+    // Bip à la place des gros mots : la voix est coupée et un « bip » de 1 kHz la remplace.
+    const osc = ac.createOscillator(), bg = ac.createGain();
+    osc.frequency.value = 1000;
+    bg.gain.value = 0;
+    osc.connect(bg).connect(dest);
+    const now = ac.currentTime;
+    for (const w of swears) {
+      const a = now + Math.max(0, (w.s - clip.start) / speed), b = now + (w.e - clip.start) / speed;
+      bleep.gain.setValueAtTime(0, a); bleep.gain.setValueAtTime(1, b);
+      bg.gain.setValueAtTime(0.18, a); bg.gain.setValueAtTime(0, b);
+    }
+    osc.start();
   }
   await v.play();
   if (m) await m.play().catch(() => {});

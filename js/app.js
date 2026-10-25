@@ -1,11 +1,12 @@
 import {
   decodeAudio, computeEnergy, resampleTo16k, analyzeVisual, makeTrack, refineFaces,
-  buildWords, findClips, fmtTime, seekTo, clamp, norm,
+  buildWords, findClips, fmtTime, seekTo, clamp, norm, isKeyword,
 } from './analyzer.js';
 import { loadFaceDetector, detectFaces } from './faces.js';
-import { renderFrame, groupWords, CAPTION_STYLES, CAPTION_FONTS, FILTERS } from './renderer.js';
+import { renderFrame, groupWords, CAPTION_STYLES, CAPTION_FONTS, FILTERS, isSwear } from './renderer.js';
 import { exportClip, outputSize } from './exporter.js';
-import { cacheKey, loadAnalysis, saveAnalysis } from './cache.js';
+import { transcribePcm } from './transcribe.js';
+import { cacheKey, loadAnalysis, saveAnalysis, loadClips, saveClips } from './cache.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -335,6 +336,21 @@ async function generate() {
       cuts: state.visual.cuts, minLen, maxLen, count: S.count,
     });
     state.clips = found.map(c => initClip(c));
+    state.key = key;
+    // Clips retouchés lors d'une session précédente sur la même vidéo : on les reprend.
+    const saved = cached ? await loadClips(key) : null;
+    if (saved?.length) {
+      const fresh = state.clips;
+      state.clips = saved.map(c => ({ ...c, opts: { ...defaultOpts(), ...c.opts }, groups: groupWords(c.words, c.opts.maxWords || 3) }));
+      setTimeout(() => {
+        const t = toast('♻ Tes clips modifiés la dernière fois ont été retrouvés. ', 'ok', 9000);
+        const b = document.createElement('button');
+        b.className = 'btn ghost sm';
+        b.textContent = 'Nouvelle détection';
+        b.onclick = () => { state.clips = fresh; t.remove(); persistClips(); renderResults(); };
+        t.append(b);
+      }, 400);
+    }
     setStep('detect', 'done', 1, `${state.clips.length} clips retenus`);
 
     // 5. Suivi fin des visages sur les clips retenus
@@ -365,35 +381,7 @@ async function generate() {
 }
 
 function transcribe(pcm, model, language) {
-  return new Promise((resolve, reject) => {
-    const w = new Worker(new URL('./whisper-worker.js', import.meta.url), { type: 'module' });
-    const segments = [];
-    const files = new Map();
-    let dev = '';
-    w.onmessage = e => {
-      const m = e.data;
-      if (m.type === 'download') {
-        files.set(m.file, m);
-        let l = 0, t = 0;
-        files.forEach(f => { l += f.loaded || 0; t += f.total || 0; });
-        setStep('asr', 'run', t ? l / t : 0, `Téléchargement du modèle IA… ${(l / 1e6).toFixed(0)} / ${(t / 1e6).toFixed(0)} Mo`);
-      } else if (m.type === 'ready') {
-        dev = m.device === 'webgpu' ? 'GPU' : 'CPU';
-        setStep('asr', 'run', 0, `Modèle prêt (${dev}) — transcription…`);
-        if (!w._started) { w._started = true; w.postMessage({ type: 'run', audio: pcm, language }, [pcm.buffer]); }
-      } else if (m.type === 'progress') {
-        setStep('asr', 'run', m.done / m.total, `Transcription (${dev})… ${fmtTime(m.done)} / ${fmtTime(m.total)}`);
-      } else if (m.type === 'segments') {
-        segments.push(...m.segments);
-      } else if (m.type === 'done') {
-        w.terminate(); resolve(segments);
-      } else if (m.type === 'error') {
-        w.terminate(); reject(new Error(m.message));
-      }
-    };
-    w.onerror = e => { w.terminate(); reject(new Error(e.message || 'Worker IA en erreur')); };
-    w.postMessage({ type: 'load', model });
-  });
+  return transcribePcm(pcm, model, language, (txt, p) => setStep('asr', 'run', p, txt));
 }
 
 /* ---------------- Clips ---------------- */
@@ -410,7 +398,7 @@ function defaultOpts() {
     uppercase: true, emojis: true, hook: true, hookText: '', progress: false,
     capFont: 'montserrat', capColor: '', maxWords: 3, emojiSize: 1,
     filter: 'none', speed: 1, volume: 1, fade: false, music: !!state.music, musicVol: 0.15,
-    watermark: store.get('watermark') || '', hookDur: 3, hookTheme: 'light',
+    watermark: store.get('watermark') || '', hookDur: 3, hookTheme: 'light', highlight: false, censor: false,
   };
 }
 
@@ -447,6 +435,15 @@ function setClipText(clip, text) {
   clip.groups = groupWords(clip.words, clip.opts.maxWords);
 }
 
+// Enregistre les clips (réglages, textes, découpes) pour les retrouver la prochaine fois.
+let persistTimer = 0;
+function persistClips() {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    if (state.key) saveClips(state.key, state.clips.map(({ groups, ...c }) => ({ ...c, words: c.words.map(({ emo, ...w }) => w) })));
+  }, 600);
+}
+
 let thumbQueue = Promise.resolve();
 function renderThumb(clip, canvas) {
   thumbQueue = thumbQueue.then(() => drawThumb(clip, canvas)).catch(console.error);
@@ -472,6 +469,7 @@ async function renderResults() {
     sort === 'time' ? a.start - b.start : sort === 'length' ? (a.end - a.start) - (b.end - b.start) : b.score - a.score);
   const byScore = [...state.clips].sort((a, b) => b.score - a.score);
   $('#resCount').textContent = order.length < state.clips.length ? `${order.length} / ${state.clips.length}` : state.clips.length;
+  updateExportAll();
   $('#resSource').textContent = `${state.file.name} · ${fmtTime(state.duration)}${state.words.length ? ' · transcription IA' : ''}`;
   for (const [i, clip] of order.entries()) {
     const card = document.createElement('div');
@@ -485,6 +483,7 @@ async function renderResults() {
         <div class="play">▶</div>
         <div class="score"><b class="${scoreClass(clip.score)}">${clip.score}</b><small>VIRALITÉ</small></div>
         ${rank <= 3 ? `<div class="rank">#${rank}</div>` : ''}
+        <label class="pick" title="Sélectionner pour l'export"><input type="checkbox" ${selected.has(clip.id) ? 'checked' : ''}><span></span></label>
         <div class="dur">${fmtTime(clip.end - clip.start)}</div>
       </div>
       <div class="card-body">
@@ -502,7 +501,13 @@ async function renderResults() {
       </div>`;
     card.querySelector('.card-title').textContent = clip.title;
     card.querySelector('.thumb').style.aspectRatio = clip.opts.aspect === '16:9' ? '16 / 11' : '9 / 12';
-    card.querySelector('.thumb').addEventListener('click', () => openEditor(clip));
+    card.querySelector('.thumb').addEventListener('click', e => { if (!e.target.closest('.pick')) openEditor(clip); });
+    card.querySelector('.pick input').addEventListener('change', e => {
+      e.target.checked ? selected.add(clip.id) : selected.delete(clip.id);
+      card.classList.toggle('picked', e.target.checked);
+      updateExportAll();
+    });
+    card.classList.toggle('picked', selected.has(clip.id));
     card.querySelector('[data-act=edit]').addEventListener('click', () => openEditor(clip));
     card.querySelector('[data-act=export]').addEventListener('click', () => runExport([clip]));
     card.querySelector('[data-act=dup]').addEventListener('click', () => duplicateClip(clip));
@@ -531,6 +536,7 @@ function duplicateClip(clip) {
   const copy = { ...clip, id: newId(), title: `${clip.title} (copie)`, opts: { ...clip.opts }, words: clip.words.map(w => ({ ...w })) };
   copy.groups = groupWords(copy.words, copy.opts.maxWords);
   state.clips.splice(state.clips.indexOf(clip) + 1, 0, copy);
+  persistClips();
   renderResults();
   toast('Clip dupliqué', 'ok', 2000);
 }
@@ -541,6 +547,7 @@ function deleteClip(clip) {
   if (i < 0) return;
   state.clips.splice(i, 1);
   lastDeleted = { clip, i };
+  persistClips();
   renderResults();
   const t = toast('Clip supprimé. ', '', 6000);
   const undo = document.createElement('button');
@@ -550,6 +557,7 @@ function deleteClip(clip) {
     if (!lastDeleted) return;
     state.clips.splice(lastDeleted.i, 0, lastDeleted.clip);
     lastDeleted = null;
+    persistClips();
     t.remove();
     renderResults();
   };
@@ -566,6 +574,7 @@ function manualClip(at, len = 30) {
     title: cw.length ? cw.slice(0, 10).map(w => w.w).join(' ') : `Clip à ${fmtTime(start)}`, hashtags: [], text: '',
   });
   state.clips.push(clip);
+  persistClips();
   renderResults().then(() => openEditor(clip));
 }
 
@@ -605,7 +614,21 @@ $('#searchText').addEventListener('keydown', e => {
 
 const escapeHtml = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 $('#newVideo').addEventListener('click', () => { show('upload'); });
-$('#exportAll').addEventListener('click', () => runExport([...state.clips].sort((a, b) => b.score - a.score)));
+const selected = new Set();
+function updateExportAll() {
+  [...selected].forEach(id => { if (!state.clips.some(c => c.id === id)) selected.delete(id); });
+  $('#exportAll').textContent = selected.size ? `⬇ Exporter la sélection (${selected.size})` : '⬇ Tout exporter';
+}
+$('#exportAll').addEventListener('click', () => {
+  const list = selected.size ? state.clips.filter(c => selected.has(c.id)) : state.clips;
+  runExport([...list].sort((a, b) => b.score - a.score));
+});
+$('#copyAll').addEventListener('click', async () => {
+  const txt = [...state.clips].sort((a, b) => b.score - a.score)
+    .map((c, i) => `${i + 1}. ${c.title} (${fmtTime(c.start)} → ${fmtTime(c.end)}, score ${c.score})\n${c.hashtags.concat(['#shorts', '#viral']).join(' ')}`).join('\n\n');
+  try { await navigator.clipboard.writeText(txt); toast('📋 Titres et hashtags de tous les clips copiés', 'ok', 2500); }
+  catch { toast('Copie impossible', 'err'); }
+});
 
 /* ---------------- Export ---------------- */
 
@@ -734,6 +757,72 @@ function download(blob, name) {
 }
 
 $('#exportSrt').addEventListener('click', () => exportSrt(state.editing));
+
+// Accroche proposée : la phrase du clip la plus « accrocheuse » (question, mots-clés, longueur courte).
+function suggestHook(clip) {
+  const sentences = [];
+  let cur = [];
+  for (const w of clip.words) {
+    cur.push(w.w);
+    if (/[.!?…]$/.test(w.w) || cur.length >= 16) { sentences.push(cur); cur = []; }
+  }
+  if (cur.length) sentences.push(cur);
+  const scored = sentences.filter(s => s.length >= 3).map((s, i) => {
+    const txt = s.join(' ');
+    const score = (/\?$/.test(txt) ? 3 : 0) + s.filter(isKeyword).length * 1.5
+      + (s.length >= 4 && s.length <= 12 ? 1.5 : 0) - i * 0.15 + (/^(pourquoi|comment|quand|qui|why|how|what)\b/i.test(txt) ? 2 : 0);
+    return { txt, score };
+  }).sort((a, b) => b.score - a.score);
+  let t = scored[0]?.txt || clip.title;
+  t = t.replace(/^[,;:\s-]+/, '').replace(/[,;:]$/, '');
+  if (t.length > 70) t = t.slice(0, 68).replace(/\s\S*$/, '') + '…';
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+$('#hookSuggest').addEventListener('click', () => {
+  const c = state.editing;
+  if (!c.words.length) { toast('Pas de texte dans ce clip pour proposer une accroche.', 'err'); return; }
+  c.opts.hookText = suggestHook(c);
+  c.opts.hook = true;
+  $('#hookText').value = c.opts.hookText;
+  syncEditor();
+});
+
+// Préréglages : le style complet d'un clip, enregistré sous un nom, réutilisable sur les prochaines vidéos.
+const STYLE_KEYS = ['captions', 'capStyle', 'capSize', 'capPos', 'uppercase', 'emojis', 'capFont', 'capColor', 'maxWords', 'emojiSize',
+  'highlight', 'censor', 'filter', 'speed', 'fade', 'watermark', 'hook', 'hookDur', 'hookTheme', 'progress', 'layout', 'zoom'];
+const presets = () => { try { return JSON.parse(store.get('presets') || '{}'); } catch { return {}; } };
+function fillPresets() {
+  $('#presetList').innerHTML = '<option value="">— Choisir un préréglage —</option>'
+    + Object.keys(presets()).map(n => `<option>${escapeHtml(n)}</option>`).join('');
+}
+fillPresets();
+$('#presetSave').addEventListener('click', () => {
+  const name = prompt('Nom du préréglage (ex. « Shorts jaune ») :');
+  if (!name?.trim()) return;
+  const all = presets();
+  all[name.trim()] = Object.fromEntries(STYLE_KEYS.map(k => [k, state.editing.opts[k]]));
+  store.set('presets', JSON.stringify(all));
+  fillPresets();
+  $('#presetList').value = name.trim();
+  toast(`💾 Préréglage « ${name.trim()} » enregistré`, 'ok', 2500);
+});
+$('#presetList').addEventListener('change', e => {
+  const p = presets()[e.target.value];
+  if (!p) return;
+  const c = state.editing;
+  Object.assign(c.opts, p);
+  c.groups = groupWords(c.words, c.opts.maxWords);
+  syncEditor();
+  toast(`Préréglage « ${e.target.value} » appliqué`, 'ok', 2000);
+});
+$('#presetDel').addEventListener('click', () => {
+  const n = $('#presetList').value;
+  if (!n) return;
+  const all = presets();
+  delete all[n];
+  store.set('presets', JSON.stringify(all));
+  fillPresets();
+});
 $('#exportThumb').addEventListener('click', () => {
   const c = state.editing;
   const [W, H] = outputSize(c.opts.aspect, '1080');
@@ -778,7 +867,7 @@ function closeEditor() {
   cancelAnimationFrame(raf);
   $('#editor').classList.add('hidden');
   document.body.style.overflow = '';
-  if (clip) refreshCard(clip);
+  if (clip) { refreshCard(clip); persistClips(); }
 }
 
 function updateCaption() {
@@ -863,6 +952,9 @@ function loop() {
   renderFrame(pctx, video, c, video.currentTime, env);
   const rel = (video.currentTime - c.start) / (c.opts.speed || 1);
   syncMusic();
+  const tt = video.currentTime;
+  const bad = c.opts.censor && c.words.some(w => tt >= w.s && tt < w.e && isSwear(w.w));
+  video.volume = bad ? 0 : clamp(c.opts.volume, 0, 1);
   $('#tCur').textContent = fmtTime(rel);
   if (document.activeElement !== $('#scrub')) $('#scrub').value = video.currentTime;
   $('#playBtn').textContent = video.paused ? '▶' : '❚❚';
@@ -961,7 +1053,7 @@ $('#copyCaption').addEventListener('click', async () => {
 $('#applyAll').addEventListener('click', () => {
   const src = state.editing.opts;
   const keys = ['captions', 'capStyle', 'capSize', 'capPos', 'uppercase', 'emojis', 'layout', 'reframe', 'podcast', 'aspect', 'zoom', 'progress', 'hook',
-    'capFont', 'capColor', 'maxWords', 'emojiSize', 'filter', 'speed', 'volume', 'fade', 'music', 'musicVol', 'watermark', 'hookDur', 'hookTheme'];
+    'capFont', 'capColor', 'maxWords', 'emojiSize', 'filter', 'speed', 'volume', 'fade', 'music', 'musicVol', 'watermark', 'hookDur', 'hookTheme', 'highlight', 'censor'];
   state.clips.forEach(c => {
     if (c === state.editing) return;
     keys.forEach(k => { c.opts[k] = src[k]; });

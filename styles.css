@@ -302,3 +302,14 @@ main:has(#screen-montage.active) { max-width: 1640px; }
 .mt-tools { order: 5; flex-basis: 100%; padding-top: 8px; border-top: 1px solid var(--line); }
 .mt-stage .player .muted { margin: 0; }
 .mt-inspect .btn { white-space: normal; text-align: left; }
+.pick { position: absolute; bottom: 10px; left: 10px; cursor: pointer; z-index: 2; }
+.pick input { display: none; }
+.pick span { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: #000a; border: 2px solid #ffffff55; transition: .15s; }
+.pick input:checked + span { background: var(--accent); border-color: var(--accent); }
+.pick input:checked + span::after { content: '✓'; font-weight: 800; font-size: 14px; }
+.card.picked { border-color: var(--accent); box-shadow: 0 0 0 2px #7c5cff55; }
+.preset-row { display: flex; gap: 6px; }
+.preset-row select { flex: 1; min-width: 0; }
+#hookSuggest { margin-top: 8px; }
+.mt-status { display: block; font-size: 12px; margin: -4px 0 10px; min-height: 0; }
+.mt-zoom .btn { margin-left: 4px; }

@@ -1,6 +1,6 @@
 // Garde l'analyse d'une vidéo (énergie, transcription, images) dans le navigateur (IndexedDB) :
 // relancer la même vidéo avec les mêmes réglages ne refait pas tout le travail.
-const DB = 'clipforge', STORE = 'analyses', KEEP = 8;
+const DB = 'clipforge', STORE = 'analyses', KEEP = 16;
 
 function open() {
   return new Promise((resolve, reject) => {
@@ -32,6 +32,13 @@ export async function loadAnalysis(key) {
     return hit?.data || null;
   } catch { return null; }
 }
+
+// Clips retouchés (réglages, textes, découpes), rangés à côté de l'analyse de la même vidéo.
+export async function loadClips(key) {
+  const hit = await loadAnalysis(`${key}|clips`);
+  return Array.isArray(hit) ? hit : null;
+}
+export function saveClips(key, clips) { return saveAnalysis(`${key}|clips`, clips); }
 
 export async function saveAnalysis(key, data) {
   try {
