@@ -40,7 +40,7 @@ L'import par lien (YouTube…) marche avec l'exe et avec Node.js, mais pas sur l
 
 - L'export se fait **en temps réel** : un clip de 45 s prend environ 45 s. Gardez l'onglet visible pendant l'export.
 - Le modèle « base » offre un bon compromis. Le modèle « small » est plus précis mais plus lent. La transcription utilise la carte graphique (WebGPU) si elle est disponible.
-- Pour les vidéos de plus d'une heure, prévoyez assez de mémoire vive, car l'audio est décodé entièrement.
+- Pour les vidéos longues (plus de 300 Mo), la version PC extrait le son avec ffmpeg, ce qui économise beaucoup de mémoire. Sur la version en ligne, l'audio est décodé entièrement : prévoyez assez de mémoire vive au-delà d'une heure.
 
 ## Partager l'app ou la mettre sur GitHub
 

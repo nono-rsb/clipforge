@@ -1,5 +1,5 @@
 import {
-  decodeAudio, computeEnergy, resampleTo16k, analyzeVisual, makeTrack, refineFaces,
+  decodeAudioSmart, computeEnergy, resampleTo16k, analyzeVisual, makeTrack, refineFaces,
   buildWords, findClips, fmtTime, seekTo, clamp, norm, isKeyword,
 } from './analyzer.js';
 import { loadFaceDetector, detectFaces } from './faces.js';
@@ -307,7 +307,7 @@ async function generate() {
     const timer = setInterval(tick, 500);
     await nextFrame();
     let audio = null;
-    try { audio = await decodeAudio(state.file); } catch (e) { console.warn(e); }
+    try { audio = await decodeAudioSmart(state.file); } catch (e) { console.warn(e); }
     finally { clearInterval(timer); }
     if (audio) {
       state.energy = computeEnergy(audio, HOP);

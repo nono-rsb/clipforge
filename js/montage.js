@@ -1,7 +1,7 @@
 // Montage de vidéos longues : plusieurs vidéos sur une timeline, coupe, réorganisation,
 // suppression automatique des silences, textes, musique, transitions, export.
 // Tout se joue en direct sur un canvas ; l'export enregistre ce rendu (comme pour les clips).
-import { clamp, clamp01, fmtTime, seekTo, decodeAudio, computeEnergy, resampleTo16k, buildWords } from './analyzer.js';
+import { clamp, clamp01, fmtTime, seekTo, decodeAudioSmart, computeEnergy, resampleTo16k, buildWords } from './analyzer.js';
 import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer } from './renderer.js';
 import { pickMime, outputSize } from './exporter.js';
 import { transcribePcm } from './transcribe.js';
@@ -462,7 +462,7 @@ async function removeSilences(all) {
   const busy = ui.toast('Analyse du son pour trouver les silences…', '', 0);
   try {
     for (const m of new Set(targets.map(mediaOf))) {
-      if (!m.energy && !m.image) m.energy = computeEnergy(await decodeAudio(m.file), HOP);
+      if (!m.energy && !m.image) m.energy = computeEnergy(await decodeAudioSmart(m.file), HOP);
     }
   } catch (e) {
     busy.remove();
@@ -624,7 +624,7 @@ async function transcribeAll() {
       if (m.words) continue;
       const tag = M.media.length > 1 ? `Vidéo ${i + 1}/${M.media.length} · ` : '';
       status.textContent = `${tag}Lecture du son…`;
-      const pcm = await resampleTo16k(await decodeAudio(m.file));
+      const pcm = await resampleTo16k(await decodeAudioSmart(m.file));
       const segs = await transcribePcm(pcm, $('#mtModel').value, $('#mtLang').value, txt => { status.textContent = tag + txt; });
       m.words = buildWords(segs);
     }

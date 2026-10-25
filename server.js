@@ -205,7 +205,29 @@ function json(res, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// Son d'une vidéo en 16 kHz mono (float 32 bits) via ffmpeg : bien plus léger que le décodage
+// complet dans le navigateur, indispensable pour les vidéos de plus d'une heure.
+function audio16k(req, res) {
+  const ffmpeg = findTool('ffmpeg');
+  if (!ffmpeg) { res.writeHead(404).end('ffmpeg absent'); return; }
+  fs.mkdirSync(DL, { recursive: true });
+  const tmp = path.join(DL, `son-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.tmp`);
+  const out = fs.createWriteStream(tmp);
+  const clean = () => fs.rm(tmp, { force: true }, () => {});
+  req.pipe(out);
+  req.on('aborted', () => { out.destroy(); clean(); });
+  out.on('error', () => { clean(); res.destroy(); });
+  out.on('finish', () => {
+    const child = spawn(ffmpeg, ['-v', 'error', '-i', tmp, '-vn', '-ac', '1', '-ar', '16000', '-f', 'f32le', '-'], { windowsHide: true });
+    res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+    child.stdout.pipe(res);
+    child.on('close', code => { clean(); if (code) res.destroy(); });
+    req.on('close', () => { if (child.exitCode === null) child.kill(); });
+  });
+}
+
 async function api(req, res, pathname, query) {
+  if (pathname === '/api/audio16k' && req.method === 'POST') return audio16k(req, res);
   if (pathname === '/api/yt/status') {
     return json(res, { ytdlp: !!findTool('yt-dlp'), ffmpeg: !!findTool('ffmpeg'), js: !!jsRuntime(), canInstallFfmpeg: WIN });
   }

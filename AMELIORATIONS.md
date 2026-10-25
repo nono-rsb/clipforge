@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-25 (5e série) — Vidéos très longues
+
+61. Dans la version PC (exe ou Node.js), le son des vidéos de plus de 300 Mo est extrait par ffmpeg au lieu d'être décodé entièrement par le navigateur : beaucoup moins de mémoire, les vidéos de plusieurs heures passent. Sert aussi de secours si le navigateur n'arrive pas à lire le son. Utilisé par l'analyse, la transcription et le retrait des silences.
+
 ## 2026-10-25 (4e série) — Photos et précision
 
 55. Photos dans le montage (4 s par défaut avec effet Ken Burns, durée réglable)

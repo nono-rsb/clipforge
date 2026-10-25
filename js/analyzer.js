@@ -29,6 +29,27 @@ export async function decodeAudio(file) {
   finally { ctx.close(); }
 }
 
+// Son 16 kHz mono décodé par ffmpeg sur le PC (version installée), présenté comme un AudioBuffer.
+async function decodeOnServer(file) {
+  const r = await fetch('/api/audio16k', { method: 'POST', body: file });
+  if (!r.ok || !(r.headers.get('content-type') || '').includes('octet-stream')) throw new Error('Décodage local indisponible');
+  const pcm = new Float32Array(await r.arrayBuffer());
+  if (!pcm.length) throw new Error('Aucun son dans la vidéo');
+  return { sampleRate: 16000, numberOfChannels: 1, length: pcm.length, duration: pcm.length / 16000, getChannelData: () => pcm };
+}
+
+// Les grosses vidéos passent d'abord par ffmpeg (si l'app tourne sur le PC) ; sinon, ou en cas
+// d'échec, le navigateur décode tout lui-même.
+export async function decodeAudioSmart(file) {
+  const big = file.size > 300e6;
+  if (big) { try { return await decodeOnServer(file); } catch {} }
+  try { return await decodeAudio(file); }
+  catch (e) {
+    if (big) throw e;
+    try { return await decodeOnServer(file); } catch { throw e; }
+  }
+}
+
 // Énergie (RMS en dB normalisée 0..1) par fenêtre de `hop` secondes.
 export function computeEnergy(audio, hop = 0.1) {
   const sr = audio.sampleRate;
@@ -55,6 +76,7 @@ export function computeEnergy(audio, hop = 0.1) {
 }
 
 export async function resampleTo16k(audio) {
+  if (audio.sampleRate === 16000 && audio.numberOfChannels === 1) return new Float32Array(audio.getChannelData(0));
   const len = Math.ceil(audio.duration * 16000);
   const off = new OfflineAudioContext(1, len, 16000);
   const src = off.createBufferSource();
