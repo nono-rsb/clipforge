@@ -3,7 +3,7 @@
 const CACHE = 'clipforge-v1';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/apple-touch-icon.png', 'icons/icon-192.png',
-  ...['analyzer', 'app', 'cache', 'emoji', 'exporter', 'faces', 'montage', 'renderer', 'save', 'transcribe', 'whisper-worker'].map(f => `js/${f}.js`),
+  ...['analyzer', 'app', 'cache', 'emoji', 'exporter', 'faces', 'montage', 'renderer', 'save', 'tour', 'transcribe', 'whisper-worker'].map(f => `js/${f}.js`),
 ];
 const FONTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 

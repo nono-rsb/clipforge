@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-25 (10e série)
+
+79. Tuto intégré au montage : visite guidée en 13 étapes qui met chaque outil en lumière, lancée automatiquement la première fois puis avec le bouton « 🎓 Tuto » (marche aussi sur téléphone)
+
 ## 2026-10-25 (9e série) — Version téléphone (iPhone)
 
 73. Installable sur l'écran d'accueil de l'iPhone (et Android) : icône, plein écran, nom « ClipForge », barre d'état intégrée, encoche respectée

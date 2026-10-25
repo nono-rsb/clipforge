@@ -6,6 +6,7 @@ import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer } from './rendere
 import { pickMime, outputSize } from './exporter.js';
 import { transcribePcm } from './transcribe.js';
 import { saveBlob, keepAwake } from './save.js';
+import { startTour } from './tour.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1171,6 +1172,29 @@ function inspector() {
   }
 }
 
+/* ---------------- Tuto ---------------- */
+
+const TOUR = [
+  { sel: '#mtAdd', title: '1. Ajoute tes vidéos', text: 'Touche ici pour choisir tes <b>vidéos et photos</b> (ou glisse-les sur la page depuis ton PC). Elles se mettent bout à bout sur la timeline, dans l\'ordre.' },
+  { sel: '#mtTimeline', title: '2. La timeline', text: 'Chaque bloc est un morceau de vidéo. <b>Clique</b> pour placer la tête de lecture rose, <b>glisse un bloc</b> pour changer l\'ordre, <b>tire ses bords</b> pour le raccourcir. Le zoom au-dessus permet de voir plus de détails.' },
+  { sel: '#mtPlay', title: '3. Regarder', text: 'Lecture / pause (touche <b>Espace</b>). Tu peux aussi toucher l\'image. Les flèches <b>← →</b> avancent d\'une seconde.' },
+  { sel: '#mtSplit', title: '4. Couper', text: 'Place la tête de lecture puis <b>Couper</b> (touche <b>S</b>) : le bloc est coupé en deux. Sélectionne le morceau en trop et supprime-le avec 🗑. Les flèches ◀ ▶ le déplacent, ⧉ le duplique.' },
+  { sel: '#mtSilenceAll', title: '5. Retirer les blancs', text: 'Le plus gros gain de temps : ClipForge trouve <b>tous les silences</b> et les enlève tout seul. Règle le seuil si trop ou pas assez de choses sont coupées.' },
+  { sel: '#mtLevel', title: '6. Même volume partout', text: 'Si tes vidéos viennent de sources différentes, ce bouton met <b>toutes les voix au même niveau</b>.' },
+  { sel: '#mtTranscribe', title: '7. Sous-titres automatiques', text: 'Choisis la langue puis génère les sous-titres. Juste en dessous : <b>style</b>, <b>position</b> et <b>taille</b>. La première fois, l\'IA se télécharge (connexion nécessaire).' },
+  { sel: '#mtText', title: '8. Textes à l\'écran', text: 'Ajoute un titre à la tête de lecture (touche <b>T</b>). Dans les réglages : style, animation, couleur, durée. Chaque texte peut aussi devenir un <b>chapitre YouTube</b> (bouton 📑).' },
+  { sel: '#mtMusic', title: '9. Musique de fond', text: 'Ajoute une musique : elle se pose sur la piste 🎵 de la timeline. Glisse-la, raccourcis-la, et clique dessus pour le volume et les fondus. Elle <b>baisse toute seule</b> quand quelqu\'un parle.' },
+  { sel: '#mtInspect', title: '10. Les réglages', text: 'Sélectionne un bloc, un texte ou une musique : ses réglages s\'affichent ici. Pour un bloc : <b>vitesse</b>, volume, <b>filtre</b>, zoom, effet Ken Burns, <b>fondu</b> avant le bloc, cadrage.' },
+  { sel: '#mtUndo', title: '11. Pas de stress', text: 'Une erreur ? <b>Annuler</b> (Ctrl+Z) et <b>Rétablir</b> (Ctrl+Y). Ton projet est aussi <b>sauvegardé tout seul</b> : rajoute les mêmes vidéos et ClipForge te propose de reprendre.' },
+  { sel: '#mtAspect', title: '12. Le format', text: '<b>16:9</b> pour YouTube, <b>9:16</b> pour TikTok, Reels et Shorts, <b>1:1</b> ou <b>4:5</b> pour Instagram.' },
+  { sel: '#mtExport', title: '13. Exporter', text: 'Quand c\'est prêt : <b>Exporter la vidéo</b>. L\'export se fait en temps réel, garde la page ouverte. Ensuite, tu peux en <b>faire des clips</b> en un clic. 🎧 exporte juste le son, 🖼 l\'image affichée.' },
+];
+
+function tour() {
+  pause();
+  startTour(TOUR, () => { try { localStorage.setItem('clipforge.tutoMontage', '1'); } catch {} });
+}
+
 export function initMontage(helpers) {
   ui = helpers;
   sizeCanvas('preview');
@@ -1189,6 +1213,10 @@ export function initMontage(helpers) {
     addFiles([...e.dataTransfer.files]);
   });
 
+  $('#mtTour').addEventListener('click', tour);
+  let seen = null;
+  try { seen = localStorage.getItem('clipforge.tutoMontage'); } catch {}
+  if (!seen) setTimeout(tour, 400);
   $('#mtPlay').addEventListener('click', () => (M.playing ? pause() : play()));
   canvas.addEventListener('click', () => (M.playing ? pause() : play()));
   $('#mtSplit').addEventListener('click', split);

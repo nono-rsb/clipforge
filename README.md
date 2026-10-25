@@ -62,6 +62,7 @@ N'envoie pas les dossiers `bin/` et `downloads/` (le fichier `.gitignore` s'en c
 - `js/app.js` : interface
 - `js/montage.js` : onglet Montage (timeline, silences, textes, export)
 - `js/transcribe.js` : lance Whisper (partagé entre Clipping et Montage)
+- `js/tour.js` : visite guidée (tuto du montage)
 - `js/save.js` : enregistrement des exports (feuille de partage sur téléphone) et écran gardé allumé pendant l'export
 - `manifest.webmanifest`, `sw.js`, `icons/` : installation sur l'écran d'accueil et fonctionnement hors ligne
 - `js/cache.js` : analyses gardées dans le navigateur (IndexedDB)
