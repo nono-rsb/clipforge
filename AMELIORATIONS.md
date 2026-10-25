@@ -2,6 +2,18 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-25 (3e série) — Confort et finitions
+
+46. Zoom dynamique ⚡ : petit zoom (« punch-in ») sur les mots forts, comme les créateurs pros
+47. Aperçu animé du clip au survol de sa carte (recadrage et sous-titres compris)
+48. Sous-titres déplaçables en glissant directement sur l'image
+49. Plein écran dans l'éditeur (bouton ou touche F)
+50. Export à 60 images/s pour des clips plus fluides
+51. « Sujets qui t'intéressent » : la détection favorise les passages qui en parlent (raison « 🎯 Ton sujet »)
+52. Thème clair / sombre, mémorisé
+53. Fenêtre d'aide des raccourcis clavier (bouton ? ou touche ?)
+54. Un montage exporté peut repartir directement dans le Clipping (« ✂ En faire des clips »)
+
 ## 2026-10-25 (2e série) — Montage plus complet et finitions du clipping
 
 ### Montage

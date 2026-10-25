@@ -374,7 +374,7 @@ function lowerBound(arr, x, key = v => v) {
   return lo;
 }
 
-export function findClips({ duration, energy, hop, words, cuts, minLen, maxLen, count }) {
+export function findClips({ duration, energy, hop, words, cuts, minLen, maxLen, count, topics = [] }) {
   if (duration < minLen) { minLen = Math.max(3, duration * 0.5); maxLen = duration; }
   const N = energy.length;
   const P = new Float64Array(N + 1), P2 = new Float64Array(N + 1);
@@ -390,6 +390,10 @@ export function findClips({ duration, energy, hop, words, cuts, minLen, maxLen, 
 
   const KW = new Float64Array(words.length + 1);
   words.forEach((w, i) => { KW[i + 1] = KW[i] + kwScore(w.w); });
+  // Sujets choisis par l'utilisateur : chaque mot qui commence par l'un d'eux compte beaucoup.
+  const stems = topics.map(norm).filter(t => t.length >= 3).map(t => (t.length > 5 ? t.slice(0, -1) : t));
+  const TOP = new Float64Array(words.length + 1);
+  words.forEach((w, i) => { const n = norm(w.w); TOP[i + 1] = TOP[i] + (stems.some(st => n.startsWith(st)) ? 1 : 0); });
   const wordIdx = t => lowerBound(words, t, w => w.s);
 
   // Points de coupe naturels : fins de phrases, pauses, creux d'énergie.
@@ -430,9 +434,10 @@ export function findClips({ duration, energy, hop, words, cuts, minLen, maxLen, 
     const loud = clamp01(0.5 + (meanE(a, b) - gMean) / (2 * gStd));
     const dyn = clamp01(stdE(a, b) / (gStd * 1.2));
     const hookE = clamp01(0.5 + (meanE(a, Math.min(b, a + 3)) - gMean) / (2 * gStd));
-    let speech, kw = 0, hookKw = 0;
+    let speech, kw = 0, hookKw = 0, topic = 0;
     if (words.length) {
       const i0 = wordIdx(a), i1 = wordIdx(b);
+      topic = clamp01((TOP[i1] - TOP[i0]) / 2);
       speech = clamp01(((i1 - i0) / len) / 3.2);
       kw = clamp01(((KW[i1] - KW[i0]) / (len / 10)) / 2);
       hookKw = clamp01(KW[Math.min(i1, i0 + 14)] - KW[i0]);
@@ -443,7 +448,7 @@ export function findClips({ duration, energy, hop, words, cuts, minLen, maxLen, 
     const lenFit = 1 - Math.min(1, Math.abs(len - target) / (maxLen - minLen + 1));
     const raw = 0.22 * loud + 0.14 * dyn + 0.16 * hookE + 0.16 * speech + 0.12 * kw + 0.08 * hookKw
       + 0.05 * cutRate + 0.02 * ((s.strong ? 1 : 0.4) + (e.strong ? 1 : 0.4)) + 0.03 * lenFit;
-    return { start: a, end: b, raw, f: { loud, dyn, hookE, speech, kw, hookKw, cutRate } };
+    return { start: a, end: b, raw: raw + 0.25 * topic, f: { loud, dyn, hookE, speech, kw, hookKw, cutRate, topic } };
   }
 
   cands.sort((x, y) => y.raw - x.raw);
@@ -476,6 +481,7 @@ export function findClips({ duration, energy, hop, words, cuts, minLen, maxLen, 
 
 function reasonsFor(f) {
   const r = [];
+  if (f.topic > 0) r.push(['🎯', 'Ton sujet']);
   if (f.hookKw > 0.5) r.push(['❓', 'Accroche percutante']);
   if (f.hookE > 0.72) r.push(['🔥', 'Démarrage fort']);
   if (f.loud > 0.7) r.push(['📢', 'Moment intense']);

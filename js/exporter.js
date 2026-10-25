@@ -22,7 +22,7 @@ export function outputSize(aspect, quality) {
   return [Math.round(w * k / 2) * 2, Math.round(h * k / 2) * 2];
 }
 
-export async function exportClip({ url, clip, env, quality = '1080', music = null, onProgress, signal }) {
+export async function exportClip({ url, clip, env, quality = '1080', fps = 30, music = null, onProgress, signal }) {
   const o = clip.opts;
   const speed = o.speed || 1;
   const [W, H] = outputSize(clip.opts.aspect, quality);
@@ -57,11 +57,11 @@ export async function exportClip({ url, clip, env, quality = '1080', music = nul
     ac.createMediaElementSource(m).connect(mg).connect(dest);
   }
 
-  const stream = new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  const stream = new MediaStream([...canvas.captureStream(fps).getVideoTracks(), ...dest.stream.getAudioTracks()]);
   const mime = pickMime();
   const rec = new MediaRecorder(stream, {
     ...(mime ? { mimeType: mime } : {}),
-    videoBitsPerSecond: Math.round(10_000_000 * (W * H) / (1080 * 1920)),
+    videoBitsPerSecond: Math.round(10_000_000 * (W * H) / (1080 * 1920) * (fps > 30 ? 1.5 : 1)),
     audioBitsPerSecond: 192_000,
   });
   const chunks = [];

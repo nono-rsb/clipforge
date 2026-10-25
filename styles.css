@@ -313,3 +313,35 @@ main:has(#screen-montage.active) { max-width: 1640px; }
 #hookSuggest { margin-top: 8px; }
 .mt-status { display: block; font-size: 12px; margin: -4px 0 10px; min-height: 0; }
 .mt-zoom .btn { margin-left: 4px; }
+
+/* ---------- Thème clair ---------- */
+:root[data-theme="light"] {
+  --bg: #f5f5fa; --bg2: #ffffff; --panel: #ffffff; --panel2: #f0f0f6; --line: #e2e2ec;
+  --text: #15151e; --muted: #6b6b80;
+}
+:root[data-theme="light"] body { background: radial-gradient(1200px 600px at 70% -10%, #c9bcff55, transparent 60%), var(--bg); }
+:root[data-theme="light"] .topbar { background: #f5f5facc; border-bottom-color: var(--line); }
+:root[data-theme="light"] .label { color: #3a3a4e; }
+:root[data-theme="light"] .dropzone { border-color: #c9c9da; }
+:root[data-theme="light"] .dropzone:hover, :root[data-theme="light"] .dropzone.drag { background: #f1edff; }
+:root[data-theme="light"] .chips button.on, :root[data-theme="light"] .tabs button.on { color: var(--accent); }
+:root[data-theme="light"] .switch { background: #d4d4e2; }
+:root[data-theme="light"] .ed-stage, :root[data-theme="light"] .mt-preview { background: radial-gradient(600px 400px at 50% 40%, #e4dcff, #f5f5fa 70%); }
+:root[data-theme="light"] .mt-empty { background: #f5f5faee; }
+:root[data-theme="light"] .caption-box { color: #3a3a4e; }
+:root[data-theme="light"] .card:hover { box-shadow: 0 14px 40px #0002; }
+:root[data-theme="light"] .toast { box-shadow: 0 10px 40px #0002; }
+:root[data-theme="light"] .mt-seg span, :root[data-theme="light"] .score, :root[data-theme="light"] .dur { color: #fff; }
+
+.top-actions { display: flex; gap: 8px; align-items: center; }
+.mt8 { margin-top: 8px; }
+.help { position: fixed; inset: 0; background: #000a; z-index: 200; display: grid; place-items: center; padding: 16px; animation: fade .2s ease; }
+.help-box { max-width: 720px; width: 100%; }
+.help-box h3 { margin: 0 0 14px; }
+.help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; }
+.help-cols p { margin: 6px 0; font-size: 13.5px; color: var(--muted); }
+.help-cols b { display: block; margin-bottom: 6px; }
+#stageWrap:fullscreen { background: #000; }
+#preview { touch-action: none; }
+@media (max-width: 700px) { .help-cols { grid-template-columns: 1fr; } }
+.round.sm { color: var(--text); border: 1px solid var(--line); font-weight: 700; }

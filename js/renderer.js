@@ -80,7 +80,7 @@ export function drawCaptionLayer(ctx, groups, t, o, W, H) { drawCaptions(ctx, gr
 
 export function renderFrame(ctx, video, clip, t, env) {
   const { width: W, height: H } = ctx.canvas;
-  const o = clip.opts;
+  let o = clip.opts;
   ctx.save();
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
@@ -88,6 +88,8 @@ export function renderFrame(ctx, video, clip, t, env) {
   if (vw) {
     ctx.save();
     ctx.filter = FILTERS[o.filter]?.css || 'none';
+    // Zoom dynamique : petit « punch-in » sur les mots forts.
+    if (o.punch && clip.words?.length) o = { ...o, zoom: o.zoom * punchAt(punchTimes(clip.words), t) };
     const auto = o.reframe === 'auto';
     const duo = env.track.duo;
     const podcast = auto && o.layout === 'fill' && o.podcast && o.podcast !== 'off' && duo?.has(t);
@@ -123,6 +125,29 @@ export function renderFrame(ctx, video, clip, t, env) {
     if (a > 0) { ctx.fillStyle = `rgba(0,0,0,${clamp01(a)})`; ctx.fillRect(0, 0, W, H); }
   }
   ctx.restore();
+}
+
+// Instants des « punch-in » : mots-clés et mots à emoji, espacés d'au moins 2,5 s.
+const punchCache = new WeakMap();
+function punchTimes(words) {
+  let times = punchCache.get(words);
+  if (!times) {
+    times = [];
+    for (const w of words) if ((isKeyword(w.w) || wordEmoji(w)) && (!times.length || w.s - times.at(-1) > 2.5)) times.push(w.s);
+    punchCache.set(words, times);
+  }
+  return times;
+}
+
+function punchAt(times, t) {
+  let k = 0;
+  for (const p of times) {
+    const d = t - p;
+    if (d < -0.15 || d > 1.2) continue;
+    const env = d < 0 ? 1 + d / 0.15 : d < 0.8 ? 1 : 1 - (d - 0.8) / 0.4;
+    k = Math.max(k, clamp01(env));
+  }
+  return 1 + 0.12 * (1 - (1 - k) ** 2);
 }
 
 const accentOf = o => o.capColor || CAPTION_STYLES[o.capStyle]?.accent || '#FFE600';

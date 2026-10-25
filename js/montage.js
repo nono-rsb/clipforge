@@ -499,8 +499,18 @@ async function exportVideo(audioOnly = false) {
   draw();
   const type = (mime || (audioOnly ? 'audio/webm' : 'video/webm')).split(';')[0];
   const ext = audioOnly ? (type.includes('mp4') ? 'm4a' : 'weba') : (type.includes('mp4') ? 'mp4' : 'webm');
-  download(new Blob(chunks, { type }), `montage_${new Date().toISOString().slice(0, 10)}.${ext}`);
-  ui.toast(audioOnly ? '✅ Son exporté' : '✅ Montage exporté', 'ok');
+  const name = `montage_${new Date().toISOString().slice(0, 10)}.${ext}`;
+  const blob = new Blob(chunks, { type });
+  download(blob, name);
+  if (audioOnly) ui.toast('✅ Son exporté', 'ok');
+  else {
+    const t2 = ui.toast('✅ Montage exporté. ', 'ok', 12000);
+    const b = document.createElement('button');
+    b.className = 'btn ghost sm';
+    b.textContent = '✂ En faire des clips';
+    b.onclick = () => { t2.remove(); ui.toClipping(new File([blob], name, { type })); };
+    t2.append(b);
+  }
   ui.notify(audioOnly ? 'Son du montage exporté' : 'Montage exporté');
 }
 

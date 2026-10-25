@@ -17,12 +17,38 @@ const state = {
   file: null, url: null, duration: 0,
   energy: null, words: [], visual: null,
   clips: [], editing: null, music: null,
-  settings: { length: '30-60', count: 6, aspect: '9:16', transcribe: true, faces: true, podcast: 'speaker', lang: 'fr', model: 'onnx-community/whisper-base', quality: '1080' },
+  settings: { length: '30-60', count: 6, aspect: '9:16', transcribe: true, faces: true, podcast: 'speaker', lang: 'fr', model: 'onnx-community/whisper-base', quality: '1080', fps: '30', topics: '' },
   exporting: false,
 };
 const env = { track: makeTrack(null) };
 
 /* ---------------- Utilitaires UI ---------------- */
+
+const store = {
+  get: k => { try { return localStorage.getItem(`clipforge.${k}`); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(`clipforge.${k}`, v); } catch {} },
+};
+
+// Thème clair / sombre, mémorisé.
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $('#themeBtn').textContent = t === 'light' ? '🌙' : '☀️';
+}
+applyTheme(store.get('theme') || 'dark');
+$('#themeBtn').addEventListener('click', () => {
+  const t = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+  applyTheme(t);
+  store.set('theme', t);
+});
+const toggleHelp = on => $('#help').classList.toggle('hidden', !on);
+$('#helpBtn').addEventListener('click', () => toggleHelp(true));
+$('#helpClose').addEventListener('click', () => toggleHelp(false));
+$('#help').addEventListener('click', e => { if (e.target.id === 'help') toggleHelp(false); });
+document.addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  if (e.key === '?') toggleHelp($('#help').classList.contains('hidden'));
+  else if (e.key === 'Escape' && !$('#help').classList.contains('hidden')) { e.stopImmediatePropagation(); toggleHelp(false); }
+}, true);
 
 function show(id) {
   // Une analyse qui finit pendant qu'on est dans l'onglet Montage ne doit pas le fermer.
@@ -83,6 +109,9 @@ $('#transcribe').addEventListener('change', e => { state.settings.transcribe = e
 $('#faces').addEventListener('change', e => { state.settings.faces = e.target.checked; });
 $('#lang').addEventListener('change', e => { state.settings.lang = e.target.value; });
 $('#model').addEventListener('change', e => { state.settings.model = e.target.value; });
+$('#topics').value = store.get('topics') || '';
+state.settings.topics = $('#topics').value;
+$('#topics').addEventListener('input', e => { state.settings.topics = e.target.value; store.set('topics', e.target.value); });
 
 const dz = $('#dropzone');
 $('#fileInput').addEventListener('change', e => e.target.files[0] && loadFile(e.target.files[0]));
@@ -333,7 +362,7 @@ async function generate() {
     const [minLen, maxLen] = S.length.split('-').map(Number);
     const found = findClips({
       duration: state.duration, energy: state.energy, hop: HOP, words: state.words,
-      cuts: state.visual.cuts, minLen, maxLen, count: S.count,
+      cuts: state.visual.cuts, minLen, maxLen, count: S.count, topics: S.topics.split(/[,;]+/).map(x => x.trim()).filter(Boolean),
     });
     state.clips = found.map(c => initClip(c));
     state.key = key;
@@ -385,11 +414,6 @@ function transcribe(pcm, model, language) {
 }
 
 /* ---------------- Clips ---------------- */
-
-const store = {
-  get: k => { try { return localStorage.getItem(`clipforge.${k}`); } catch { return null; } },
-  set: (k, v) => { try { localStorage.setItem(`clipforge.${k}`, v); } catch {} },
-};
 
 function defaultOpts() {
   return {
@@ -502,6 +526,7 @@ async function renderResults() {
     card.querySelector('.card-title').textContent = clip.title;
     card.querySelector('.thumb').style.aspectRatio = clip.opts.aspect === '16:9' ? '16 / 11' : '9 / 12';
     card.querySelector('.thumb').addEventListener('click', e => { if (!e.target.closest('.pick')) openEditor(clip); });
+    hoverPreview(card, clip);
     card.querySelector('.pick input').addEventListener('change', e => {
       e.target.checked ? selected.add(clip.id) : selected.delete(clip.id);
       card.classList.toggle('picked', e.target.checked);
@@ -515,6 +540,35 @@ async function renderResults() {
     grid.append(card);
     await renderThumb(clip, card.querySelector('canvas'));
   }
+}
+
+// Aperçu animé (muet) du clip au survol de sa carte, avec recadrage et sous-titres.
+function hoverPreview(card, clip) {
+  const thumb = card.querySelector('.thumb');
+  const canvas = card.querySelector('canvas');
+  let v = null, raf = 0, timer = 0;
+  thumb.addEventListener('mouseenter', () => {
+    timer = setTimeout(() => {
+      v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.src = state.url;
+      v.currentTime = clip.start;
+      v.playbackRate = clip.opts.speed || 1;
+      v.play().catch(() => {});
+      const ctx = canvas.getContext('2d');
+      const step = () => {
+        if (!v) return;
+        if (v.currentTime >= clip.end) v.currentTime = clip.start;
+        if (v.readyState >= 2) renderFrame(ctx, v, clip, v.currentTime, env);
+        raf = requestAnimationFrame(step);
+      };
+      step();
+    }, 250);
+  });
+  thumb.addEventListener('mouseleave', () => {
+    clearTimeout(timer);
+    cancelAnimationFrame(raf);
+    if (v) { v.pause(); v.removeAttribute('src'); v.load(); v = null; renderThumb(clip, canvas); }
+  });
 }
 
 async function refreshCard(clip) {
@@ -652,7 +706,7 @@ async function runExport(clips) {
       const bar = card?.querySelector('.exp-bar i');
       const label = clips.length > 1 ? `Export ${i + 1}/${clips.length}` : 'Export';
       const { blob, ext } = await exportClip({
-        url: state.url, clip, env, quality: state.settings.quality, music: state.music,
+        url: state.url, clip, env, quality: state.settings.quality, fps: +state.settings.fps, music: state.music,
         onProgress: p => {
           const pc = Math.round(clamp(p, 0, 1) * 100);
           const rest = left - clamp(p, 0, 1) * realLen(clip);
@@ -972,7 +1026,32 @@ function togglePlay() {
 }
 
 $('#playBtn').addEventListener('click', togglePlay);
-pv.addEventListener('click', togglePlay);
+// Clic sur l'image : lecture / pause. Glisser verticalement : déplace les sous-titres.
+pv.addEventListener('pointerdown', e => {
+  const c = state.editing;
+  const r = pv.getBoundingClientRect();
+  const y0 = e.clientY;
+  let dragging = false;
+  pv.setPointerCapture(e.pointerId);
+  const mv = ev => {
+    if (!dragging && Math.abs(ev.clientY - y0) < 6) return;
+    dragging = true;
+    c.opts.capPos = clamp((ev.clientY - r.top) / r.height, 0.12, 0.92);
+    $('#capPos').value = c.opts.capPos;
+  };
+  const up = () => {
+    pv.removeEventListener('pointermove', mv);
+    pv.removeEventListener('pointerup', up);
+    if (!dragging) togglePlay();
+  };
+  pv.addEventListener('pointermove', mv);
+  pv.addEventListener('pointerup', up);
+});
+const toggleFs = () => {
+  const p = document.fullscreenElement ? document.exitFullscreen() : $('#stageWrap').requestFullscreen?.();
+  p?.catch(() => {});
+};
+$('#fsBtn').addEventListener('click', toggleFs);
 const toggleMute = () => { video.muted = !video.muted; $('#muteBtn').textContent = video.muted ? '🔇' : '🔊'; };
 $('#muteBtn').addEventListener('click', toggleMute);
 $('#scrub').addEventListener('input', e => { video.currentTime = +e.target.value; });
@@ -981,7 +1060,7 @@ $('#edExport').addEventListener('click', () => runExport([state.editing]));
 document.addEventListener('keydown', e => {
   if (!state.editing || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
-  if (e.code === 'Escape') closeEditor();
+  if (e.code === 'Escape' && !document.fullscreenElement) closeEditor();
   if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
     e.preventDefault();
     const d = (e.shiftKey ? 5 : 1) * (e.code === 'ArrowLeft' ? -1 : 1);
@@ -990,6 +1069,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'KeyI') setTrim('start', video.currentTime);
   if (e.code === 'KeyO') setTrim('end', video.currentTime);
   if (e.code === 'KeyM') toggleMute();
+  if (e.code === 'KeyF') toggleFs();
 });
 
 $$('.tabs button').forEach(b => b.addEventListener('click', () => {
@@ -1066,6 +1146,15 @@ window.addEventListener('resize', () => state.editing && drawWave());
 
 /* ---------------- Modes : Clipping / Montage ---------------- */
 
+// Le montage exporté peut repartir directement dans le Clipping pour en tirer des shorts.
+async function toClipping(file) {
+  $$('#modes button').forEach(x => x.classList.toggle('on', x.dataset.mode === 'clip'));
+  montage?.leaveMontage();
+  show('upload');
+  await loadFile(file);
+  toast('✂ Montage chargé dans le Clipping : règle les paramètres puis « Générer les clips ».', 'ok', 6000);
+}
+
 let montage = null;
 let lastClipScreen = 'upload';
 $('#modes').addEventListener('click', async e => {
@@ -1079,7 +1168,7 @@ $('#modes').addEventListener('click', async e => {
     show('montage');
     if (!montage) {
       montage = await import('./montage.js');
-      montage.initMontage({ toast, notify });
+      montage.initMontage({ toast, notify, toClipping });
     }
   } else {
     montage?.leaveMontage();

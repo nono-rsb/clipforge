@@ -32,6 +32,8 @@
     </nav>
     <div class="top-actions">
       <span class="pill-soft">100 % local · aucune vidéo envoyée</span>
+      <button id="helpBtn" class="round sm" title="Raccourcis clavier (?)">?</button>
+      <button id="themeBtn" class="round sm" title="Thème clair / sombre">☀️</button>
     </div>
   </header>
 
@@ -87,6 +89,11 @@
               <button data-v="60-90">60 – 90 s</button>
               <button data-v="15-60">Auto</button>
             </div>
+          </div>
+
+          <div class="field">
+            <div class="label">Sujets qui t'intéressent <small class="muted">facultatif</small></div>
+            <input type="text" id="topics" class="input" placeholder="ex. argent, crypto, business" autocomplete="off">
           </div>
 
           <div class="field">
@@ -315,6 +322,7 @@
           <input type="range" id="scrub" min="0" max="1" step="0.01" value="0">
           <span id="tDur" class="mono">0:00</span>
           <button id="muteBtn" class="round sm" title="Son">🔊</button>
+          <button id="fsBtn" class="round sm" title="Plein écran (F)">⛶</button>
         </div>
       </div>
 
@@ -383,6 +391,10 @@
             <div class="label">Zoom <b id="zoomVal"></b></div>
             <input type="range" id="zoom" min="1" max="2.5" step="0.05">
           </div>
+          <label class="switch-row">
+            <span><span class="label">Zoom dynamique ⚡</span><small>Petit zoom sur les mots forts, comme les créateurs pros</small></span>
+            <input type="checkbox" data-bool="punch"><span class="switch"></span>
+          </label>
           <label class="switch-row">
             <span class="label">Barre de progression</span>
             <input type="checkbox" data-bool="progress"><span class="switch"></span>
@@ -533,12 +545,39 @@
             <div class="chips" data-setting="quality">
               <button data-v="1080" class="on">1080p</button><button data-v="720">720p</button>
             </div>
+            <div class="chips mt8" data-setting="fps">
+              <button data-v="30" class="on">30 i/s</button><button data-v="60">60 i/s (plus fluide)</button>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
 
+  <div id="help" class="help hidden">
+    <div class="help-box panel">
+      <h3>Raccourcis clavier</h3>
+      <div class="help-cols">
+        <div>
+          <b>Éditeur de clip</b>
+          <p><kbd>Espace</kbd> lecture / pause</p>
+          <p><kbd>←</kbd> <kbd>→</kbd> ±1 s · <kbd>Maj</kbd> ±5 s</p>
+          <p><kbd>I</kbd> / <kbd>O</kbd> début / fin à la tête de lecture</p>
+          <p><kbd>M</kbd> son · <kbd>F</kbd> plein écran · <kbd>Échap</kbd> fermer</p>
+          <p>Glisser sur l'image : déplacer les sous-titres</p>
+        </div>
+        <div>
+          <b>Montage</b>
+          <p><kbd>Espace</kbd> lecture · <kbd>S</kbd> couper · <kbd>T</kbd> texte</p>
+          <p><kbd>Suppr</kbd> supprimer · <kbd>Ctrl+D</kbd> dupliquer</p>
+          <p><kbd>←</kbd> <kbd>→</kbd> ±1 s · <kbd>↑</kbd> <kbd>↓</kbd> coupe précédente / suivante</p>
+          <p><kbd>Ctrl+Z</kbd> annuler · <kbd>Ctrl+Y</kbd> rétablir</p>
+          <p><kbd>Début</kbd> / <kbd>Fin</kbd> aller au début / à la fin</p>
+        </div>
+      </div>
+      <button class="btn primary sm" id="helpClose">Compris</button>
+    </div>
+  </div>
   <div id="toasts"></div>
   <video id="srcVideo" class="offscreen-video" playsinline preload="auto"></video>
   <script type="module" src="js/app.js"></script>
