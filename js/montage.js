@@ -929,10 +929,11 @@ function render() {
       let moved = false;
       const mv = ev => {
         if (!moved) { snapshot(); moved = true; }
-        tx.t = clamp(t0 + (ev.clientX - x0) / M.zoom, 0, Math.max(0, total() - 0.5));
+        const t = t0 + (ev.clientX - x0) / M.zoom;
+        tx.t = clamp(t + snapDelta([t, t + tx.dur], tx.id, ev), 0, Math.max(0, total() - 0.5));
         b.style.left = `${tx.t * M.zoom}px`;
       };
-      const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); render(); seek(tx.t); };
+      const up = () => { snapGuide(null); removeEventListener('pointermove', mv); removeEventListener('pointerup', up); render(); seek(tx.t); };
       addEventListener('pointermove', mv);
       addEventListener('pointerup', up);
     });
@@ -943,6 +944,35 @@ function render() {
   $('#mtExport').disabled = !M.segs.length;
   $$('#mtAspect button').forEach(b => b.classList.toggle('on', b.dataset.v === M.aspect));
   sizeCanvas('preview');
+}
+
+// Magnétisme de la timeline : textes et musiques s'accrochent à la tête de lecture,
+// aux coupes et aux bords des autres éléments (maintenir Alt pour le désactiver).
+function snapPoints(skip) {
+  const pts = [0, M.t];
+  let t = 0;
+  M.segs.forEach(s => pts.push(t += segDur(s)));
+  M.texts.forEach(x => x.id !== skip && pts.push(x.t, x.t + x.dur));
+  M.tracks.forEach(x => x.id !== skip && pts.push(x.t, x.t + x.dur));
+  return pts;
+}
+function snapGuide(t) {
+  let g = $('#mtSnap');
+  if (!g) { g = document.createElement('div'); g.id = 'mtSnap'; g.className = 'mt-snap'; $('#mtInner').append(g); }
+  g.classList.toggle('hidden', t == null);
+  if (t != null) g.style.left = `${t * M.zoom}px`;
+}
+// Renvoie le décalage à appliquer pour qu'un des bords (temps) tombe sur un point proche, ou 0.
+function snapDelta(edges, skip, ev) {
+  if (ev?.altKey) { snapGuide(null); return 0; }
+  const tol = 8 / M.zoom;
+  let best = null;
+  for (const p of snapPoints(skip)) for (const e of edges) {
+    const d = p - e;
+    if (Math.abs(d) <= tol && (best == null || Math.abs(d) < Math.abs(best.d))) best = { d, p };
+  }
+  snapGuide(best?.p);
+  return best ? best.d : 0;
 }
 
 // Bibliothèque des musiques et piste musique de la timeline.
@@ -990,7 +1020,8 @@ function renderMusic() {
       snapshot();
       const left = h.classList.contains('l'), x0 = e.clientX, t0 = tr.t, off0 = tr.off, d0 = tr.dur;
       const mv = ev => {
-        const d = (ev.clientX - x0) / M.zoom;
+        let d = (ev.clientX - x0) / M.zoom;
+        d += snapDelta([left ? t0 + d : t0 + d0 + d], tr.id, ev);
         if (left) {
           // Le bord gauche avance dans la musique : la fin reste en place.
           const dd = clamp(d, -Math.min(t0, off0), d0 - 0.5);
@@ -999,6 +1030,7 @@ function renderMusic() {
         place();
       };
       const up = () => {
+        snapGuide(null);
         removeEventListener('pointermove', mv);
         removeEventListener('pointerup', up);
         M.sel = { kind: 'music', id: tr.id };
@@ -1016,10 +1048,12 @@ function renderMusic() {
       const mv = ev => {
         if (!moved && Math.abs(ev.clientX - x0) < 3) return;
         if (!moved) { snapshot(); moved = true; }
-        tr.t = Math.max(0, t0 + (ev.clientX - x0) / M.zoom);
+        const t = t0 + (ev.clientX - x0) / M.zoom;
+        tr.t = Math.max(0, t + snapDelta([t, t + tr.dur], tr.id, ev));
         place();
       };
       const up = () => {
+        snapGuide(null);
         removeEventListener('pointermove', mv);
         removeEventListener('pointerup', up);
         render();

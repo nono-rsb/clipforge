@@ -286,6 +286,7 @@ kbd { background: var(--panel2); border: 1px solid var(--line); border-bottom-wi
 .mt-txt.sel { background: var(--warn); color: #111; }
 .mt-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent2); pointer-events: none; box-shadow: 0 0 8px var(--accent2); }
 .mt-playhead::before { content: ''; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top-color: var(--accent2); }
+.mt-snap { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #ffd84d; pointer-events: none; z-index: 3; }
 .mt-inspect .chips button { padding: 6px 9px; font-size: 12px; }
 
 @media (max-width: 1100px) {

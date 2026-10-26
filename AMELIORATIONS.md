@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-26
+
+83. Magnétisme sur la timeline du montage : en glissant un texte ou une musique (ou en tirant les bords d'une musique), il s'accroche à la tête de lecture, aux coupes, au début et à la fin de la vidéo et aux bords des autres éléments, avec un trait jaune pointillé ; maintenir Alt pour placer librement
+
 ## 2026-10-25 (11e série) — Protection
 
 80. Page « Confidentialité et conditions » (legal.html) : politique de confidentialité, conditions d'utilisation, mentions légales, logiciels tiers ; liens en bas de l'accueil et dans l'aide
