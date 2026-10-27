@@ -41,6 +41,7 @@ L'import par lien (YouTube…) marche avec l'exe et avec Node.js, mais pas sur l
 | **Montage** (onglet) | Plusieurs vidéos et photos sur une timeline avec miniatures, zoom, glisser-déposer pour réordonner, couper (S), raccourcir en tirant les bords, supprimer, dupliquer, annuler/rétablir. **Retrait automatique des silences** (seuil et durée réglables), **volume égalisé** entre les segments. Par segment : début/fin, vitesse 0,5× à 2×, volume, filtre, fondu au noir, mise en page remplie ou ajustée. Textes (Titre, Encadré, Bandeau ; animations Fondu, Pop, Glissé, Machine à écrire) glissables dans le temps (avec **magnétisme** sur les coupes et la tête de lecture), **sous-titres automatiques**, zoom et effet Ken Burns, chapitres YouTube, export du son seul ou d'une image, sauvegarde automatique du projet, **piste musique** (plusieurs morceaux avec forme d'onde, déplaçables et découpables, volume, fondus, boucle, baisse automatique sous la voix), fondus de début et de fin, export 16:9, 9:16, 1:1 ou 4:5 en 1080p/720p |
 | Export | MP4 (ou WebM selon le navigateur) en 1080p ou 720p, 30 ou 60 images/s, un clip, une sélection ou tous d'un coup |
 | Confort | Aperçu animé au survol des clips, sous-titres déplaçables à la souris, plein écran, thème clair/sombre, aide des raccourcis (touche ?), montage exporté renvoyé au Clipping en un clic |
+| Accessibilité | Tout se fait au clavier (Tab, Entrée, contour visible), noms lisibles par les lecteurs d'écran (VoiceOver, NVDA), animations réduites si le système le demande |
 
 ## Bon à savoir
 
@@ -68,6 +69,7 @@ N'envoie pas les dossiers `bin/` et `downloads/` (le fichier `.gitignore` s'en c
 - `js/transcribe.js` : lance Whisper (partagé entre Clipping et Montage)
 - `js/tour.js` : visite guidée (tuto du montage)
 - `js/save.js` : enregistrement des exports (feuille de partage sur téléphone) et écran gardé allumé pendant l'export
+- `js/a11y.js` : accessibilité (noms pour les lecteurs d'écran, navigation au clavier)
 - `manifest.webmanifest`, `sw.js`, `icons/` : installation sur l'écran d'accueil et fonctionnement hors ligne
 - `js/cache.js` : analyses gardées dans le navigateur (IndexedDB)
 - `build/build-exe.js` : fabrique `ClipForge.exe` (Node SEA)

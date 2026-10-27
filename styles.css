@@ -304,7 +304,8 @@ main:has(#screen-montage.active) { max-width: 1640px; }
 .mt-stage .player .muted { margin: 0; }
 .mt-inspect .btn { white-space: normal; text-align: left; }
 .pick { position: absolute; bottom: 10px; left: 10px; cursor: pointer; z-index: 2; }
-.pick input { display: none; }
+.pick input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.pick input:focus-visible + span { outline: 2px solid var(--accent2); outline-offset: 2px; }
 .pick span { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: #000a; border: 2px solid #ffffff55; transition: .15s; }
 .pick input:checked + span { background: var(--accent); border-color: var(--accent); }
 .pick input:checked + span::after { content: '✓'; font-weight: 800; font-size: 14px; }
@@ -432,3 +433,10 @@ body:has(#screen-montage.active) .site-foot { display: none; }
 .toast.consent { display: grid; gap: 8px; max-width: 420px; }
 .toast.consent span { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .toast.consent .btn { justify-self: start; }
+
+/* Accessibilité : contour visible quand on navigue au clavier, animations réduites si demandé */
+:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+.dropzone:focus-visible { outline-offset: -4px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

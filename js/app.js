@@ -7,6 +7,7 @@ import { renderFrame, groupWords, CAPTION_STYLES, CAPTION_FONTS, FILTERS, isSwea
 import { exportClip, outputSize } from './exporter.js';
 import { transcribePcm } from './transcribe.js';
 import { saveBlob, setSaveToast, keepAwake } from './save.js';
+import { initA11y } from './a11y.js';
 import { cacheKey, loadAnalysis, saveAnalysis, loadClips, saveClips } from './cache.js';
 
 const $ = s => document.querySelector(s);
@@ -72,6 +73,7 @@ function toast(msg, kind = '', ms = 4500) {
 }
 
 setSaveToast(toast);
+initA11y();
 
 // Premier lancement : conditions d'utilisation et confidentialité, à accepter une fois.
 const CGU = '2026-10-25';

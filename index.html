@@ -197,7 +197,7 @@
           <p class="muted" id="resSource"></p>
         </div>
         <div class="results-actions">
-          <select id="sortBy">
+          <select id="sortBy" aria-label="Trier les clips">
             <option value="score">Trier : score</option>
             <option value="time">Trier : chronologique</option>
             <option value="length">Trier : durée</option>
@@ -248,11 +248,11 @@
           <div id="mtSongs" class="mt-media"></div>
           <h3>Sous-titres</h3>
           <div class="row2">
-            <select id="mtLang">
+            <select id="mtLang" aria-label="Langue des sous-titres">
               <option value="fr">Français</option><option value="en">Anglais</option><option value="es">Espagnol</option>
               <option value="de">Allemand</option><option value="it">Italien</option><option value="pt">Portugais</option><option value="auto">Auto</option>
             </select>
-            <select id="mtModel">
+            <select id="mtModel" aria-label="Précision de la transcription">
               <option value="onnx-community/whisper-tiny">Rapide</option>
               <option value="onnx-community/whisper-base" selected>Équilibré</option>
               <option value="onnx-community/whisper-small">Précis</option>
@@ -281,7 +281,7 @@
             <button id="mtEmpty" class="mt-empty"><span class="dz-icon">⬆</span><b>Ajoute ou glisse tes vidéos ici</b><small>Elles s'enchaînent sur la timeline, dans l'ordre</small></button>
           </div>
           <div class="player">
-            <button id="mtPlay" class="round">▶</button>
+            <button id="mtPlay" class="round" aria-label="Lecture / pause (Espace)">▶</button>
             <span id="mtCur" class="mono">0:00</span><span class="muted">/</span><span id="mtTotal" class="mono">0:00</span>
             <div class="mt-tools">
               <button id="mtSplit" class="btn ghost sm" title="Couper à la tête de lecture (S)">✂ Couper</button>
@@ -324,7 +324,7 @@
   <div id="editor" class="editor hidden">
     <div class="ed-top">
       <button id="edClose" class="btn ghost sm">← Retour</button>
-      <input id="edTitle" class="ed-title" spellcheck="false">
+      <input id="edTitle" class="ed-title" spellcheck="false" aria-label="Titre du clip">
       <div class="ed-score" id="edScore"></div>
       <button id="edExport" class="btn primary">⬇ Exporter</button>
     </div>
@@ -333,7 +333,7 @@
       <div class="ed-stage">
         <div class="stage-wrap" id="stageWrap"><canvas id="preview"></canvas></div>
         <div class="player">
-          <button id="playBtn" class="round">▶</button>
+          <button id="playBtn" class="round" aria-label="Lecture / pause (Espace)">▶</button>
           <span id="tCur" class="mono">0:00</span>
           <input type="range" id="scrub" min="0" max="1" step="0.01" value="0">
           <span id="tDur" class="mono">0:00</span>

@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-27 — Accessibilité
+
+84. Utilisable au clavier et avec un lecteur d'écran : contour bien visible sur l'élément sélectionné avec Tab, zone d'import ouverte avec Entrée, case de sélection des clips atteignable au clavier, noms lisibles pour tous les boutons-icônes, menus et curseurs, boutons de choix annoncés comme activés ou non, messages annoncés, fenêtre d'aide reconnue comme dialogue ; animations coupées si « réduire les animations » est activé dans le système
+
 ## 2026-10-26
 
 83. Magnétisme sur la timeline du montage : en glissant un texte ou une musique (ou en tirant les bords d'une musique), il s'accroche à la tête de lecture, aux coupes, au début et à la fin de la vidéo et aux bords des autres éléments, avec un trait jaune pointillé ; maintenir Alt pour placer librement
