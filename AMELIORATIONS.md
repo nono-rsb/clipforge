@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-28
+
+85. Montage : export des sous-titres en fichier `.srt` (bouton « ⬇ Sous-titres .srt ») pour YouTube, TikTok ou un logiciel de montage ; phrases courtes coupées aux pauses, à la ponctuation et aux coupes, calées sur la timeline (vitesses comprises)
+
 ## 2026-10-27 — Accessibilité
 
 84. Utilisable au clavier et avec un lecteur d'écran : contour bien visible sur l'élément sélectionné avec Tab, zone d'import ouverte avec Entrée, case de sélection des clips atteignable au clavier, noms lisibles pour tous les boutons-icônes, menus et curseurs, boutons de choix annoncés comme activés ou non, messages annoncés, fenêtre d'aide reconnue comme dialogue ; animations coupées si « réduire les animations » est activé dans le système

@@ -731,17 +731,46 @@ function finishExport() {
 /* ---------------- Interface ---------------- */
 
 // Mots de chaque vidéo replacés sur le temps de la timeline (coupes et vitesses comprises).
-function buildCaptions() {
+function timelineWords() {
   const words = [];
   let t0 = 0;
   for (const s of M.segs) {
     const m = mediaOf(s);
+    const first = words.length;
     for (const w of m.words || []) {
       if (w.s >= s.a - 0.05 && w.e <= s.b + 0.2) words.push({ w: w.w, s: t0 + (Math.max(w.s, s.a) - s.a) / s.speed, e: t0 + (Math.min(w.e, s.b) - s.a) / s.speed });
     }
+    if (words[first]) words[first].cut = true;
     t0 += segDur(s);
   }
-  M.groups = groupWords(words, 3);
+  return words;
+}
+
+function buildCaptions() {
+  M.groups = groupWords(timelineWords(), 3);
+}
+
+// Sous-titres du montage en .srt (YouTube, TikTok, Premiere…) : phrases de 42 caractères
+// au plus, coupées aux pauses et à la ponctuation, calées sur la timeline.
+function exportSrt() {
+  const words = timelineWords();
+  if (!words.length) { ui.toast('Génère d\'abord les sous-titres (💬) pour pouvoir les exporter.', '', 5000); return; }
+  const lines = [];
+  let cur = null;
+  for (const w of words) {
+    const text = cur ? `${cur.text} ${w.w}` : w.w;
+    if (cur && (w.cut || w.s - cur.e > 0.6 || text.length > 42 || w.e - cur.s > 5 || /[.!?…]$/.test(cur.text))) { lines.push(cur); cur = null; }
+    if (!cur) cur = { s: w.s, e: w.e, text: w.w };
+    else { cur.text += ` ${w.w}`; cur.e = w.e; }
+  }
+  if (cur) lines.push(cur);
+  const ts = t => {
+    const ms = Math.max(0, Math.round(t * 1000));
+    const p = (n, l = 2) => String(n).padStart(l, '0');
+    return `${p(Math.floor(ms / 3600000))}:${p(Math.floor(ms / 60000) % 60)}:${p(Math.floor(ms / 1000) % 60)},${p(ms % 1000, 3)}`;
+  };
+  const srt = lines.map((l, i) => `${i + 1}\n${ts(l.s)} --> ${ts(Math.min(l.e + 0.3, lines[i + 1]?.s ?? Infinity, total()))}\n${l.text.trim()}\n`).join('\n');
+  download(new Blob([srt], { type: 'text/plain' }), `montage_${new Date().toISOString().slice(0, 10)}.srt`);
 }
 
 async function transcribeAll() {
@@ -1268,6 +1297,7 @@ export function initMontage(helpers) {
   $('#mtAudio').addEventListener('click', () => exportVideo(true));
   $('#mtFrame').addEventListener('click', exportFrame);
   $('#mtChapters').addEventListener('click', copyChapters);
+  $('#mtSrt').addEventListener('click', exportSrt);
   $('#mtTranscribe').addEventListener('click', transcribeAll);
   $('#mtCapStyle').innerHTML = Object.entries(CAPTION_STYLES).map(([k, st]) => `<option value="${k}">${st.label}</option>`).join('');
   $('#mtCapsOn').addEventListener('change', e => { M.caps.on = e.target.checked; autosave(); draw(); });
