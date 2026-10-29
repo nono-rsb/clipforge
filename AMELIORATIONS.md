@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-29
+
+86. Détection des clips plus propre : un clip ne commence plus par un mot de liaison ou une hésitation (« donc », « et », « mais », « euh »…), ne se termine plus sur un mot qui annonce la suite (« le », « de », « pour »…) et évite les blancs avant la première phrase. Sur des transcriptions de test, les débuts « coupés » passent de 37 % à 0 %
+
 ## 2026-10-28
 
 85. Montage : export des sous-titres en fichier `.srt` (bouton « ⬇ Sous-titres .srt ») pour YouTube, TikTok ou un logiciel de montage ; phrases courtes coupées aux pauses, à la ponctuation et aux coupes, calées sur la timeline (vitesses comprises)

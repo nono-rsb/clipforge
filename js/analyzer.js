@@ -395,6 +395,10 @@ const STOP = new Set((
 
 export const norm = w => w.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^\p{L}\p{N}]/gu, '');
 
+// Mots qui ne doivent ni ouvrir un clip (ça sonne coupé : « …donc on a fait ») ni le terminer (« on va voir le »).
+const BAD_START = new Set('et donc mais alors puis parce car ou ni enfin euh heu bah ben bref ouais genre and so but because or um uh like then'.split(' '));
+const BAD_END = new Set('le la les un une des de du d l au aux et ou mais donc que qui dont car pour par avec sans dans sur en a mon ma mes ton ta tes son sa ses ce cette ces notre votre leur on je tu il elle nous vous ils elles the a an of to and or but with for in on my your that'.split(' '));
+
 function kwScore(w) {
   let s = KEYWORDS.has(norm(w)) ? 1 : 0;
   if (/[?]$/.test(w)) s += 0.6;
@@ -468,13 +472,21 @@ export function findClips({ duration, energy, hop, words, cuts, minLen, maxLen, 
     const loud = clamp01(0.5 + (meanE(a, b) - gMean) / (2 * gStd));
     const dyn = clamp01(stdE(a, b) / (gStd * 1.2));
     const hookE = clamp01(0.5 + (meanE(a, Math.min(b, a + 3)) - gMean) / (2 * gStd));
-    let speech, kw = 0, hookKw = 0, topic = 0;
+    let speech, kw = 0, hookKw = 0, topic = 0, clean = 1;
     if (words.length) {
       const i0 = wordIdx(a), i1 = wordIdx(b);
       topic = clamp01((TOP[i1] - TOP[i0]) / 2);
       speech = clamp01(((i1 - i0) / len) / 3.2);
       kw = clamp01(((KW[i1] - KW[i0]) / (len / 10)) / 2);
       hookKw = clamp01(KW[Math.min(i1, i0 + 14)] - KW[i0]);
+      // Début et fin propres : pas de mot de liaison en premier, pas de phrase coupée à la fin,
+      // pas de blanc avant le premier mot.
+      if (i1 > i0) {
+        const first = norm(words[i0].w), last = words[i1 - 1];
+        if (BAD_START.has(first)) clean -= 0.5;
+        if (BAD_END.has(norm(last.w)) && !/[.!?…]$/.test(last.w)) clean -= 0.5;
+        clean -= clamp01((words[i0].s - a - 0.8) / 2) * 0.5;
+      }
     } else speech = range(ACT, a, b);
     const nc = lowerBound(cuts, b) - lowerBound(cuts, a);
     const cutRate = clamp01((nc / len) * 10 / 3);
@@ -482,7 +494,7 @@ export function findClips({ duration, energy, hop, words, cuts, minLen, maxLen, 
     const lenFit = 1 - Math.min(1, Math.abs(len - target) / (maxLen - minLen + 1));
     const raw = 0.22 * loud + 0.14 * dyn + 0.16 * hookE + 0.16 * speech + 0.12 * kw + 0.08 * hookKw
       + 0.05 * cutRate + 0.02 * ((s.strong ? 1 : 0.4) + (e.strong ? 1 : 0.4)) + 0.03 * lenFit;
-    return { start: a, end: b, raw: raw + 0.25 * topic, f: { loud, dyn, hookE, speech, kw, hookKw, cutRate, topic } };
+    return { start: a, end: b, raw: raw + 0.25 * topic - 0.12 * (1 - Math.max(0, clean)), f: { loud, dyn, hookE, speech, kw, hookKw, cutRate, topic } };
   }
 
   cands.sort((x, y) => y.raw - x.raw);
