@@ -2,6 +2,11 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-30 — Ne plus perdre son travail
+
+87. Si on ferme ou recharge la page (ou l'app PC) pendant une analyse, un export ou une transcription, ClipForge demande confirmation au lieu de tout perdre ; l'écran reste aussi allumé pendant l'analyse et la transcription, plus seulement pendant l'export
+88. ClipForge demande au navigateur de garder ses données (analyses, clips retouchés, projets de montage) : Safari sur iPhone ne les efface plus au bout de quelques jours sans ouvrir l'app
+
 ## 2026-10-29
 
 86. Détection des clips plus propre : un clip ne commence plus par un mot de liaison ou une hésitation (« donc », « et », « mais », « euh »…), ne se termine plus sur un mot qui annonce la suite (« le », « de », « pour »…) et évite les blancs avant la première phrase. Sur des transcriptions de test, les débuts « coupés » passent de 37 % à 0 %

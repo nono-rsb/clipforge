@@ -5,7 +5,7 @@ import { clamp, clamp01, fmtTime, seekTo, decodeAudio, decodeAudioSmart, compute
 import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer } from './renderer.js';
 import { pickMime, outputSize } from './exporter.js';
 import { transcribePcm } from './transcribe.js';
-import { saveBlob, keepAwake } from './save.js';
+import { saveBlob, keepAwake, keepData } from './save.js';
 import { startTour } from './tour.js';
 
 const $ = s => document.querySelector(s);
@@ -778,6 +778,7 @@ async function transcribeAll() {
   const status = $('#mtAsrStatus');
   const btn = $('#mtTranscribe');
   btn.disabled = true;
+  const release = await keepAwake();
   try {
     for (const [i, m] of M.media.entries()) {
       if (m.words) continue;
@@ -795,7 +796,7 @@ async function transcribeAll() {
   } catch (e) {
     console.error(e);
     status.textContent = `Transcription impossible : ${e.message} (connexion requise la 1re fois)`;
-  } finally { btn.disabled = false; }
+  } finally { btn.disabled = false; release(); }
 }
 
 /* ---------------- Sauvegarde automatique du projet ---------------- */
@@ -808,6 +809,7 @@ function autosave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     if (!M.segs.length) return;
+    keepData();
     const keys = M.media.map(mediaKey);
     const data = {
       media: keys, aspect: M.aspect, caps: M.caps, fadeIn: M.fadeIn, fadeOut: M.fadeOut, texts: M.texts,

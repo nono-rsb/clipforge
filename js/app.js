@@ -6,7 +6,7 @@ import { loadFaceDetector, detectFaces } from './faces.js';
 import { renderFrame, groupWords, CAPTION_STYLES, CAPTION_FONTS, FILTERS, isSwear } from './renderer.js';
 import { exportClip, outputSize } from './exporter.js';
 import { transcribePcm } from './transcribe.js';
-import { saveBlob, setSaveToast, keepAwake } from './save.js';
+import { saveBlob, setSaveToast, keepAwake, keepData } from './save.js';
 import { initA11y } from './a11y.js';
 import { cacheKey, loadAnalysis, saveAnalysis, loadClips, saveClips } from './cache.js';
 
@@ -318,6 +318,7 @@ $('#generate').addEventListener('click', generate);
 async function generate() {
   const S = state.settings;
   askNotify();
+  const release = await keepAwake();
   show('processing');
   $('#procFile').textContent = `${state.file.name} · ${fmtTime(state.duration)}`;
   ['audio', 'visual', 'asr', 'detect', 'faces'].forEach(s => setStep(s, '', 0, ''));
@@ -443,10 +444,13 @@ async function generate() {
     await renderResults();
     show('results');
     notify(`${state.clips.length} clips prêts`);
+    keepData();
   } catch (e) {
     console.error(e);
     toast(`Erreur pendant l'analyse : ${e.message}`, 'err', 9000);
     show('upload');
+  } finally {
+    release();
   }
 }
 

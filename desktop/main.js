@@ -1,6 +1,6 @@
 // ClipForge en application PC (Electron) : sa propre fenêtre, un installateur et les mises à jour automatiques.
 // Le serveur local (server.js) tourne dans l'app ; la page est la même que dans le navigateur.
-const { app, BrowserWindow, Menu, ipcMain, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -80,6 +80,19 @@ function run() {
     });
     win.webContents.on('will-navigate', (e, u) => {
       if (!u.startsWith(url)) { e.preventDefault(); shell.openExternal(u); }
+    });
+    // Fermeture pendant une analyse ou un export : Electron n'affiche rien tout seul, on demande.
+    win.webContents.on('will-prevent-unload', e => {
+      const choice = dialog.showMessageBoxSync(win, {
+        type: 'warning',
+        buttons: ['Continuer le travail', 'Fermer quand même'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'ClipForge',
+        message: 'Une analyse ou un export est en cours.',
+        detail: 'Si tu fermes maintenant, il sera perdu.',
+      });
+      if (choice === 1) e.preventDefault();
     });
     win.loadURL(url);
   }

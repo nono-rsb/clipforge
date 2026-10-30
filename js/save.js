@@ -32,9 +32,25 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
 }
 
-// Garde l'écran allumé pendant un export (sinon le téléphone se met en veille et l'export s'arrête).
+// Pendant une analyse ou un export : garde l'écran allumé (sinon le téléphone se met en veille
+// et tout s'arrête) et demande confirmation si on ferme ou recharge la page.
+let busy = 0;
+addEventListener('beforeunload', e => { if (busy) { e.preventDefault(); e.returnValue = ''; } });
+
 export async function keepAwake() {
-  let lock = null;
+  busy++;
+  let lock = null, done = false;
   try { lock = await navigator.wakeLock?.request('screen'); } catch {}
-  return () => { lock?.release().catch(() => {}); };
+  return () => {
+    if (done) return;
+    done = true;
+    busy--;
+    lock?.release().catch(() => {});
+  };
+}
+
+// Demande au navigateur de ne pas effacer les analyses et projets enregistrés quand la place
+// manque (Safari sur iPhone vide sinon les données des sites peu ouverts).
+export function keepData() {
+  navigator.storage?.persisted?.().then(p => p || navigator.storage.persist()).catch(() => {});
 }
