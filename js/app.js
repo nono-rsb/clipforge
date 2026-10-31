@@ -1106,18 +1106,41 @@ function togglePlay() {
 }
 
 $('#playBtn').addEventListener('click', togglePlay);
+// Part de la largeur de la vidéo visible dans le cadre (1 = rien à recadrer sur les côtés).
+function visibleShare(o) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || o.layout !== 'fill') return 1;
+  const [W, H] = outputSize(o.aspect, 'preview');
+  return Math.min(1, (vw / vh > W / H ? vh * W / H : vw) / o.zoom / vw);
+}
+
 // Clic sur l'image : lecture / pause. Glisser verticalement : déplace les sous-titres.
+// Glisser horizontalement : déplace le cadrage (passe en recadrage manuel).
 pv.addEventListener('pointerdown', e => {
   const c = state.editing;
   const r = pv.getBoundingClientRect();
-  const y0 = e.clientY;
-  let dragging = false;
+  const x0 = e.clientX, y0 = e.clientY;
+  let dragging = null, cx0 = 0;
   pv.setPointerCapture(e.pointerId);
   const mv = ev => {
-    if (!dragging && Math.abs(ev.clientY - y0) < 6) return;
-    dragging = true;
-    c.opts.capPos = clamp((ev.clientY - r.top) / r.height, 0.12, 0.92);
-    $('#capPos').value = c.opts.capPos;
+    const dx = ev.clientX - x0, dy = ev.clientY - y0;
+    if (!dragging) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 6) return;
+      const share = visibleShare(c.opts);
+      dragging = Math.abs(dx) > Math.abs(dy) && share < 0.99 ? 'frame' : 'caption';
+      if (dragging === 'frame') {
+        cx0 = c.opts.reframe === 'auto' ? env.track.x(video.currentTime) : c.opts.cropX;
+        if (c.opts.reframe === 'auto') { c.opts.reframe = 'manual'; syncEditor(); }
+      }
+    }
+    if (dragging === 'frame') {
+      const share = visibleShare(c.opts);
+      c.opts.cropX = clamp(cx0 - (dx / r.width) * share, share / 2, 1 - share / 2);
+      $('#cropX').value = c.opts.cropX;
+    } else {
+      c.opts.capPos = clamp((ev.clientY - r.top) / r.height, 0.12, 0.92);
+      $('#capPos').value = c.opts.capPos;
+    }
   };
   const up = () => {
     pv.removeEventListener('pointermove', mv);

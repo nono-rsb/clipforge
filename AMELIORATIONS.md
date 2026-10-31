@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-31
+
+89. Recadrage à la main directement sur l'image : dans l'éditeur, glisser l'aperçu de gauche à droite déplace le cadre (passe en recadrage manuel en partant de la position suivie automatiquement) ; glisser de haut en bas déplace toujours les sous-titres, un clic lance ou met en pause ; Ctrl+Z annule
+
 ## 2026-10-30 — Ne plus perdre son travail
 
 87. Si on ferme ou recharge la page (ou l'app PC) pendant une analyse, un export ou une transcription, ClipForge demande confirmation au lieu de tout perdre ; l'écran reste aussi allumé pendant l'analyse et la transcription, plus seulement pendant l'export
