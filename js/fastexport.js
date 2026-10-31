@@ -2,7 +2,7 @@
 // fichier (WebCodecs), on les dessine sur le canvas et on les encode aussi vite que la machine
 // le permet. Le son est mixé hors temps réel (OfflineAudioContext). Quand le fichier ou le
 // navigateur ne s'y prête pas, l'appelant repasse sur l'export en temps réel.
-import { Muxer, ArrayBufferTarget } from './mp4-muxer.js';
+import { Muxer, ArrayBufferTarget, StreamTarget } from './mp4-muxer.js';
 
 let boxLib = null;
 function loadMp4box() {
@@ -182,6 +182,52 @@ export async function eachFrame({ file, src, a, b, count, timeAt, onFrame, pace,
   if (dec.state !== 'closed') dec.close();
 }
 
+// Images clés (décodables seules, très rapides) les plus proches des instants demandés, pour l'analyse.
+// Renvoie null si elles sont trop espacées pour donner assez d'échantillons.
+export function keyframePlan(src, times) {
+  const sync = src.video.samples.filter(s => s.is_sync);
+  if (!sync.length) return null;
+  const ts = sync[0].timescale;
+  const picked = [];
+  let j = 0;
+  for (const t of times) {
+    while (j < sync.length - 1 && Math.abs(sync[j + 1].cts / ts - t) <= Math.abs(sync[j].cts / ts - t)) j++;
+    if (picked[picked.length - 1] !== sync[j]) picked.push(sync[j]);
+  }
+  return picked.length >= times.length * 0.66 ? picked : null;
+}
+
+export async function* keyframes(file, src, plan) {
+  const ts = plan[0].timescale;
+  const ready = [];
+  let wake = null, err = null;
+  const dec = new VideoDecoder({
+    output: f => { ready.push(f); wake?.(); },
+    error: e => { err = e; wake?.(); },
+  });
+  dec.configure(src.video.config);
+  const wait = () => new Promise(r => { wake = r; });
+  let sent = 0, got = 0;
+  const wrap = f => { f.videoWidth = f.displayWidth; f.videoHeight = f.displayHeight; return f; };
+  try {
+    for (const s of plan) {
+      const data = new Uint8Array(await file.slice(s.offset, s.offset + s.size).arrayBuffer());
+      dec.decode(new EncodedVideoChunk({ type: 'key', timestamp: Math.round(s.cts / ts * 1e6), data }));
+      sent++;
+      // Les décodeurs matériels gardent parfois une image en réserve : on vide la file au besoin.
+      if (sent - got > 3) await dec.flush();
+      while (ready.length) { const f = ready.shift(); got++; yield [f.timestamp / 1e6, wrap(f)]; f.close(); }
+      if (err) throw err;
+    }
+    await dec.flush();
+    while (ready.length) { const f = ready.shift(); got++; yield [f.timestamp / 1e6, wrap(f)]; f.close(); }
+    if (err) throw err;
+  } finally {
+    ready.forEach(f => f.close());
+    if (dec.state !== 'closed') dec.close();
+  }
+}
+
 /* ---------------- Son ---------------- */
 
 // Son de la source entre a et b → { sampleRate, channels: Float32Array[] }, ou null sans audio.
@@ -274,19 +320,37 @@ export function timeStretch(channels, rate, speed) {
 
 /* ---------------- Encodage ---------------- */
 
-export async function makeEncoder({ W, H, fps, withAudio }) {
-  const vBitrate = Math.round(10_000_000 * (W * H) / (1080 * 1920) * (fps > 30 ? 1.5 : 1));
-  const vOpts = [
-    { codec: fps > 30 ? 'avc1.64002A' : 'avc1.640028', mux: 'avc' },
-    { codec: 'avc1.4D0028', mux: 'avc' },
-    { codec: 'vp09.00.40.08', mux: 'vp9' },
-  ];
+// Fichier écrit au fil de l'eau (montages longs) : les gros morceaux partent dans des Blob,
+// seul le début reste modifiable (la taille des données y est réécrite à la fin).
+function streamTarget() {
+  let head = null, headEnd = 0;
+  const parts = [];
+  const target = new StreamTarget({
+    chunked: true,
+    onData(data, pos) {
+      if (!head) { head = data.slice(); headEnd = data.length; return; }
+      if (pos < headEnd) { head.set(data.subarray(0, Math.min(data.length, headEnd - pos)), pos); return; }
+      parts.push(new Blob([data]));
+    },
+  });
+  return { target, blob: type => new Blob([head || new Uint8Array(0), ...parts], { type }) };
+}
+
+export async function makeEncoder({ W, H, fps, withAudio, withVideo = true, stream = false }) {
   let vc = null;
-  for (const v of vOpts) {
-    const cfg = { codec: v.codec, width: W, height: H, bitrate: vBitrate, framerate: fps, latencyMode: 'quality', ...(v.mux === 'avc' ? { avc: { format: 'avc' } } : {}) };
-    if ((await VideoEncoder.isConfigSupported(cfg).catch(() => ({}))).supported) { vc = { cfg, mux: v.mux }; break; }
+  if (withVideo) {
+    const vBitrate = Math.round(10_000_000 * (W * H) / (1080 * 1920) * (fps > 30 ? 1.5 : 1));
+    const vOpts = [
+      { codec: fps > 30 ? 'avc1.64002A' : 'avc1.640028', mux: 'avc' },
+      { codec: 'avc1.4D0028', mux: 'avc' },
+      { codec: 'vp09.00.40.08', mux: 'vp9' },
+    ];
+    for (const v of vOpts) {
+      const cfg = { codec: v.codec, width: W, height: H, bitrate: vBitrate, framerate: fps, latencyMode: 'quality', ...(v.mux === 'avc' ? { avc: { format: 'avc' } } : {}) };
+      if ((await VideoEncoder.isConfigSupported(cfg).catch(() => ({}))).supported) { vc = { cfg, mux: v.mux }; break; }
+    }
+    if (!vc) throw new Error('encodeur vidéo indisponible');
   }
-  if (!vc) throw new Error('encodeur vidéo indisponible');
   let ac = null;
   if (withAudio) {
     for (const [codec, mux, sampleRate] of [['mp4a.40.2', 'aac', 48000], ['opus', 'opus', 48000]]) {
@@ -295,17 +359,18 @@ export async function makeEncoder({ W, H, fps, withAudio }) {
     }
     if (!ac) throw new Error('encodeur audio indisponible');
   }
-  const target = new ArrayBufferTarget();
+  const st = stream ? streamTarget() : null;
+  const target = st ? st.target : new ArrayBufferTarget();
   const muxer = new Muxer({
     target,
-    video: { codec: vc.mux, width: W, height: H, frameRate: fps },
+    ...(vc ? { video: { codec: vc.mux, width: W, height: H, frameRate: fps } } : {}),
     ...(ac ? { audio: { codec: ac.mux, numberOfChannels: 2, sampleRate: ac.cfg.sampleRate } } : {}),
-    fastStart: 'in-memory',
+    fastStart: st ? false : 'in-memory',
     firstTimestampBehavior: 'offset',
   });
   let err = null;
-  const venc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: e => { err = e; } });
-  venc.configure(vc.cfg);
+  const venc = vc ? new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: e => { err = e; } }) : null;
+  venc?.configure(vc.cfg);
   const aenc = ac ? new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: e => { err = e; } }) : null;
   aenc?.configure(ac.cfg);
   const gop = fps * 2;
@@ -319,7 +384,7 @@ export async function makeEncoder({ W, H, fps, withAudio }) {
       f.close();
     },
     // Attend que l'encodeur rattrape son retard (sinon la mémoire grimpe).
-    async drain() { while (venc.encodeQueueSize > 4 && !err) await new Promise(r => setTimeout(r, 0)); if (err) throw err; },
+    async drain() { while (venc?.encodeQueueSize > 4 && !err) await new Promise(r => setTimeout(r, 0)); if (err) throw err; },
     async audio(buffer) {
       if (!aenc) return;
       const n = buffer.length, rate = buffer.sampleRate, block = 1024;
@@ -336,13 +401,14 @@ export async function makeEncoder({ W, H, fps, withAudio }) {
       }
     },
     async finish() {
-      await venc.flush();
+      await venc?.flush();
       await aenc?.flush();
       if (err) throw err;
-      venc.close(); aenc?.close();
+      venc?.close(); aenc?.close();
       muxer.finalize();
-      return new Blob([target.buffer], { type: 'video/mp4' });
+      const type = vc ? 'video/mp4' : 'audio/mp4';
+      return st ? st.blob(type) : new Blob([target.buffer], { type });
     },
-    close() { if (venc.state !== 'closed') venc.close(); if (aenc && aenc.state !== 'closed') aenc.close(); },
+    close() { if (venc && venc.state !== 'closed') venc.close(); if (aenc && aenc.state !== 'closed') aenc.close(); },
   };
 }

@@ -5,6 +5,7 @@ import {
 import { loadFaceDetector, detectFaces } from './faces.js';
 import { renderFrame, groupWords, CAPTION_STYLES, CAPTION_FONTS, FILTERS, isSwear } from './renderer.js';
 import { exportClip, outputSize } from './exporter.js';
+import { fastAvailable, openSource, keyframePlan, keyframes } from './fastexport.js';
 import { transcribePcm } from './transcribe.js';
 import { saveBlob, setSaveToast, keepAwake, keepData } from './save.js';
 import { initA11y } from './a11y.js';
@@ -359,7 +360,30 @@ async function generate() {
       setStep('audio', 'skip', 1, 'Pas de piste audio exploitable — analyse visuelle uniquement');
     }
 
-    // 2. Visuel
+    // 2. Transcription (Whisper travaille à part, en même temps que l'analyse des images)
+    state.words = [];
+    const asrJob = (async () => {
+      if (S.transcribe && audio) {
+        setStep('asr', 'run', 0, 'Préparation de l\'audio 16 kHz…');
+        const pcm = await resampleTo16k(audio);
+        audio = null;
+        try {
+          const segments = await transcribe(pcm, S.model, S.lang);
+          state.words = buildWords(segments);
+          if (state.words.length) setStep('asr', 'done', 1, `${state.words.length} mots transcrits`);
+          else {
+            setStep('asr', 'skip', 1, 'Aucune parole reconnue — vérifie la langue choisie');
+            toast('Aucune parole reconnue, donc pas de sous-titres. Vérifie la langue (ou choisis « Détection auto ») et relance.', 'err', 9000);
+          }
+        } catch (e) {
+          console.error(e);
+          setStep('asr', 'skip', 1, `Transcription indisponible : ${e.message}`);
+          toast('Transcription impossible (connexion requise la 1re fois). On continue sans sous-titres.', 'err', 8000);
+        }
+      } else setStep('asr', 'skip', 1, S.transcribe ? 'Pas d\'audio' : 'Désactivée');
+    })();
+
+    // 3. Images (lecture directe des images clés quand le fichier s'y prête)
     if (S.faces) {
       setStep('visual', 'run', 0, 'Chargement du détecteur de visages…');
       try { await loadFaceDetector(); detect = detectFaces; }
@@ -369,31 +393,17 @@ async function generate() {
       }
     }
     setStep('visual', 'run', 0, 'Échantillonnage des images…');
-    state.visual = await analyzeVisual(video, state.duration, p => setStep('visual', 'run', p, `Image à ${fmtTime(p * state.duration)}`), detect);
+    const frames = fastAvailable() ? async times => {
+      const src = await openSource(state.file);
+      const plan = src.video.rotation ? null : keyframePlan(src, times);
+      return plan && keyframes(state.file, src, plan);
+    } : null;
+    state.visual = await analyzeVisual(video, state.duration, p => setStep('visual', 'run', p, `Image à ${fmtTime(p * state.duration)}`), detect, frames);
     env.track = makeTrack(state.visual);
     withFaces = state.visual.samples.filter(s => s.faces?.length).length;
     setStep('visual', 'done', 1, `${state.visual.cuts.length} changements de plan · ${detect ? `visages sur ${Math.round(100 * withFaces / (state.visual.samples.length || 1))} % des images` : 'suivi du mouvement'}`);
 
-    // 3. Transcription
-    state.words = [];
-    if (S.transcribe && audio) {
-      setStep('asr', 'run', 0, 'Préparation de l\'audio 16 kHz…');
-      const pcm = await resampleTo16k(audio);
-      audio = null;
-      try {
-        const segments = await transcribe(pcm, S.model, S.lang);
-        state.words = buildWords(segments);
-        if (state.words.length) setStep('asr', 'done', 1, `${state.words.length} mots transcrits`);
-        else {
-          setStep('asr', 'skip', 1, 'Aucune parole reconnue — vérifie la langue choisie');
-          toast('Aucune parole reconnue, donc pas de sous-titres. Vérifie la langue (ou choisis « Détection auto ») et relance.', 'err', 9000);
-        }
-      } catch (e) {
-        console.error(e);
-        setStep('asr', 'skip', 1, `Transcription indisponible : ${e.message}`);
-        toast('Transcription impossible (connexion requise la 1re fois). On continue sans sous-titres.', 'err', 8000);
-      }
-    } else setStep('asr', 'skip', 1, S.transcribe ? 'Pas d\'audio' : 'Désactivée');
+    await asrJob;
     saveAnalysis(key, { energy: state.energy, words: state.words, visual: structuredClone(state.visual) });
     }
     env.track = makeTrack(state.visual);

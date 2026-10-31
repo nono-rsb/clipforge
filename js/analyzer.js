@@ -103,39 +103,26 @@ export async function resampleTo16k(audio) {
 
 // Échantillonne des images pour détecter les changements de plan, estimer où se trouve
 // l'action (centre du mouvement) et, si `detect` est fourni, repérer les visages.
-export async function analyzeVisual(video, duration, onProgress, detect) {
+// `frames(times)`, s'il est fourni, livre directement les images [t, image] (lecture rapide du fichier)
+// au lieu de déplacer la vidéo à chaque instant ; il renvoie null s'il ne peut pas servir.
+export async function analyzeVisual(video, duration, onProgress, detect, frames) {
   const W = 96, H = 54;
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const ctx = c.getContext('2d', { willReadFrequently: true });
   const step = Math.max(1, duration / 400);
-  const samples = [];
-  let prev = null;
-  for (let t = 0.05; t < duration; t += step) {
-    await seekTo(video, t);
-    ctx.drawImage(video, 0, 0, W, H);
-    const d = ctx.getImageData(0, 0, W, H).data;
-    const g = new Float32Array(W * H);
-    for (let i = 0; i < W * H; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-    let diff = 0, centroid = null;
-    if (prev) {
-      const col = new Float32Array(W);
-      let tot = 0;
-      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        const i = y * W + x, v = Math.abs(g[i] - prev[i]);
-        diff += v;
-        if (v > 12) { col[x] += v; tot += v; }
-      }
-      diff /= W * H;
-      if (tot > W * H * 0.5 && diff < 40) {
-        let s = 0;
-        for (let x = 0; x < W; x++) s += col[x] * (x + 0.5);
-        centroid = s / tot / W;
-      }
-    }
-    samples.push({ t, diff, cx: centroid, faces: detect ? detect(video) : null });
-    prev = g;
-    onProgress?.(t / duration);
+  const times = [];
+  for (let t = 0.05; t < duration; t += step) times.push(t);
+  async function* seeking() { for (const t of times) { await seekTo(video, t); yield [t, video]; } }
+  let source = null;
+  try { source = await frames?.(times); } catch (e) { console.warn('Lecture rapide des images impossible :', e); }
+  let samples = [];
+  try { await scan(source || seeking()); }
+  catch (e) {
+    if (!source) throw e;
+    console.warn('Lecture rapide des images interrompue, on repasse par la vidéo :', e);
+    samples = [];
+    await scan(seeking());
   }
   const diffs = samples.map(s => s.diff);
   const mean = diffs.reduce((a, b) => a + b, 0) / (diffs.length || 1);
@@ -143,6 +130,35 @@ export async function analyzeVisual(video, duration, onProgress, detect) {
   const thr = Math.max(18, mean + 2.5 * std);
   const cuts = samples.filter(s => s.diff > thr).map(s => s.t);
   return { samples, cuts, step };
+
+  async function scan(images) {
+    let prev = null;
+    for await (const [t, img] of images) {
+      ctx.drawImage(img, 0, 0, W, H);
+      const d = ctx.getImageData(0, 0, W, H).data;
+      const g = new Float32Array(W * H);
+      for (let i = 0; i < W * H; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+      let diff = 0, centroid = null;
+      if (prev) {
+        const col = new Float32Array(W);
+        let tot = 0;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const i = y * W + x, v = Math.abs(g[i] - prev[i]);
+          diff += v;
+          if (v > 12) { col[x] += v; tot += v; }
+        }
+        diff /= W * H;
+        if (tot > W * H * 0.5 && diff < 40) {
+          let s = 0;
+          for (let x = 0; x < W; x++) s += col[x] * (x + 0.5);
+          centroid = s / tot / W;
+        }
+      }
+      samples.push({ t, diff, cx: centroid, faces: detect ? detect(img) : null });
+      prev = g;
+      onProgress?.(t / duration);
+    }
+  }
 }
 
 // Suivi plus fin (toutes les 0,5 s) des visages sur les passages retenus.

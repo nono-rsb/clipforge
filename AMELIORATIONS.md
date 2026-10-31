@@ -6,6 +6,8 @@ Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refa
 
 90. Export rapide des clips : au lieu de rejouer la vidéo en temps réel, ClipForge lit directement les images du fichier, les dessine et les encode aussi vite que l'ordinateur le permet (carte graphique utilisée quand elle est disponible). Sur la machine de test, un clip de 46 s s'exporte en 16 s au lieu de 47 s, sans écran à garder visible pour le son. Mêmes réglages (vitesse avec voix inchangée, musique, fondus, bips, rotation des vidéos de téléphone). Les fichiers MP4/MOV en profitent ; les autres formats (WebM, MKV…) gardent l'export en temps réel
 91. Le temps restant affiché pendant l'export est calculé sur la vitesse réelle de l'export
+92. Export rapide du montage (vidéo et « Son seul ») : images lues directement dans les fichiers, son mixé hors temps réel avec les mêmes réglages (vitesses, fondus, textes, sous-titres, photos, musiques et leur baisse sous la voix). Sur la machine de test, un montage de 37 s s'exporte en 17 s au lieu de 38 s, et le son seul en 1,5 s au lieu de 38 s. Les longs montages sont écrits au fil de l'eau pour ne pas saturer la mémoire
+93. Analyse plus rapide : les images sont lues directement dans le fichier (images clés) au lieu de déplacer la vidéo 400 fois (12 s → 1,4 s sur une vidéo de 10 min), et la transcription Whisper tourne en même temps que l'analyse des images au lieu d'attendre la fin
 
 ## 2026-10-31
 

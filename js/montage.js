@@ -4,6 +4,7 @@
 import { clamp, clamp01, fmtTime, seekTo, decodeAudio, decodeAudioSmart, computeEnergy, levelDb, resampleTo16k, buildWords } from './analyzer.js';
 import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer } from './renderer.js';
 import { pickMime, outputSize } from './exporter.js';
+import { fastAvailable, openSource, eachFrame, readAudio, timeStretch, makeEncoder } from './fastexport.js';
 import { transcribePcm } from './transcribe.js';
 import { saveBlob, keepAwake, keepData } from './save.js';
 import { startTour } from './tour.js';
@@ -376,12 +377,24 @@ function sizeCanvas(quality) {
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 }
 
-function draw() {
+// Noir des fondus (transitions, début et fin) pour le segment k à l'instant local.
+function blackAt(k, local) {
+  const s = M.segs[k], d = segDur(s), next = M.segs[k + 1];
+  let black = 0;
+  if (s.trans === 'fade' && k > 0) black = Math.max(black, 1 - local / FADE);
+  if (next?.trans === 'fade') black = Math.max(black, 1 - (d - local) / FADE);
+  if (k === 0 && M.fadeIn) black = Math.max(black, 1 - local / (FADE * 2));
+  if (!next && M.fadeOut) black = Math.max(black, 1 - (d - local) / (FADE * 2));
+  return clamp01(black);
+}
+
+// `src` remplace la vidéo du segment (image lue directement dans le fichier pendant l'export rapide).
+function draw(src) {
   const W = canvas.width, H = canvas.height;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   if (M.k >= 0 && M.segs[M.k]) {
-    const s = M.segs[M.k], el = elFor(M.k);
+    const s = M.segs[M.k], el = src || elFor(M.k);
     const local = M.t - startOf(M.k), d = segDur(s);
     if (el.videoWidth) {
       ctx.save();
@@ -392,13 +405,7 @@ function draw() {
       ctx.restore();
     }
     // Transition « fondu » : noir à l'entrée de ce segment et à la sortie du précédent.
-    const next = M.segs[M.k + 1];
-    let black = 0;
-    if (s.trans === 'fade' && M.k > 0) black = Math.max(black, 1 - local / FADE);
-    if (next?.trans === 'fade') black = Math.max(black, 1 - (d - local) / FADE);
-    if (M.k === 0 && M.fadeIn) black = Math.max(black, 1 - local / (FADE * 2));
-    if (!next && M.fadeOut) black = Math.max(black, 1 - (d - local) / (FADE * 2));
-    black = clamp01(black);
+    const black = blackAt(M.k, local);
     if (black > 0) { ctx.fillStyle = `rgba(0,0,0,${black})`; ctx.fillRect(0, 0, W, H); }
     const g = gainFor(M.k);
     if (g) g.gain.value = s.vol * (1 - black);
@@ -409,6 +416,7 @@ function draw() {
     }, W, H);
   }
   M.texts.forEach(tx => { if (M.t >= tx.t && M.t <= tx.t + tx.dur) drawText(tx, W, H); });
+  if (src) return;
   $('#mtCur').textContent = fmtTime(M.t);
   $('#mtTotal').textContent = fmtTime(total());
   const ph = $('#mtPlayhead');
@@ -643,11 +651,155 @@ let exportDone = null;
 async function exportVideo(audioOnly = false) {
   if (!M.segs.length) { ui.toast('Ajoute au moins une vidéo.', 'err'); return; }
   if (M.exporting) return;
-  audio();
-  await ac.resume();
   M.exporting = true;
   const release = await keepAwake();
   pause();
+  let out = null;
+  try {
+    if (fastAvailable()) {
+      try { out = await exportFast(audioOnly); }
+      catch (e) { console.warn('Export rapide du montage impossible, export en temps réel :', e); }
+    }
+    out ||= await exportRealtime(audioOnly);
+  } finally {
+    release();
+    M.exporting = false;
+    sizeCanvas('preview');
+    M.t = 0;
+    seek(0);
+  }
+  const { blob, type, ext } = out;
+  const name = `montage_${new Date().toISOString().slice(0, 10)}.${ext}`;
+  download(blob, name);
+  if (audioOnly) ui.toast('✅ Son exporté', 'ok');
+  else {
+    const t2 = ui.toast('✅ Montage exporté. ', 'ok', 12000);
+    const b = document.createElement('button');
+    b.className = 'btn ghost sm';
+    b.textContent = '✂ En faire des clips';
+    b.onclick = () => { t2.remove(); ui.toClipping(new File([blob], name, { type })); };
+    t2.append(b);
+  }
+  ui.notify(audioOnly ? 'Son du montage exporté' : 'Montage exporté');
+}
+
+// Export rapide : images lues directement dans les fichiers et son mixé hors temps réel,
+// avec le même rendu que la lecture (textes, sous-titres, fondus, musique et sa baisse sous la voix).
+async function exportFast(audioOnly) {
+  const fps = 30;
+  sizeCanvas(M.quality);
+  const [W, H] = [canvas.width, canvas.height];
+  const T = total();
+  const srcs = new Map();
+  for (const m of new Set(M.segs.map(mediaOf))) if (!m.image) srcs.set(m, await openSource(m.file));
+  const enc = await makeEncoder({ W, H, fps, withAudio: true, withVideo: !audioOnly, stream: true });
+  const t = ui.toast('', '', 0);
+  const t0 = performance.now();
+  const show = p => {
+    const el = (performance.now() - t0) / 1000;
+    t.textContent = `⚡ Export rapide ${audioOnly ? 'du son' : 'du montage'} — ${Math.round(100 * p)} %${p > 0.03 ? ` · reste ~${fmtTime(el / p * (1 - p))}` : ''}`;
+  };
+  try {
+    show(0);
+    const share = audioOnly ? 1 : 0.15;
+    await enc.audio(await mixMontage(enc.sampleRate, srcs, p => show(p * share)));
+    if (!audioOnly) {
+      const count = Math.round(T * fps);
+      let n = 0;
+      for (const [k, s] of M.segs.entries()) {
+        const a0 = startOf(k), m = mediaOf(s);
+        const first = n, last = Math.min(count, Math.round((a0 + segDur(s)) * fps));
+        n = Math.max(n, last);
+        if (last <= first) continue;
+        const put = (img, i) => { M.k = k; M.t = (first + i) / fps; draw(img); enc.frame(canvas, first + i); };
+        const pace = async () => { await enc.drain(); show(share + (1 - share) * (M.t / T)); };
+        if (m.image) {
+          for (let i = 0; i < last - first; i++) { put(elFor(k), i); if (i % 10 === 9) await pace(); }
+        } else {
+          await eachFrame({ file: m.file, src: srcs.get(m), a: s.a, b: s.b, count: last - first, timeAt: i => s.a + ((first + i) / fps - a0) * s.speed, onFrame: (img, _, i) => put(img, i), pace });
+        }
+      }
+    }
+    return { blob: await enc.finish(), type: audioOnly ? 'audio/mp4' : 'video/mp4', ext: audioOnly ? 'm4a' : 'mp4' };
+  } finally {
+    enc.close();
+    t.remove();
+  }
+}
+
+// Son du montage : voix de chaque segment (vitesse sans changer la voix, volume, fondus),
+// puis musiques avec leurs fondus et leur baisse automatique quand quelqu'un parle.
+async function mixMontage(rate, srcs, onProgress) {
+  const T = total();
+  const off = new OfflineAudioContext(2, Math.max(1, Math.ceil(T * rate)), rate);
+  for (const [k, s] of M.segs.entries()) {
+    onProgress?.(k / M.segs.length * 0.7);
+    const m = mediaOf(s);
+    if (m.image) continue;
+    const src = srcs.get(m);
+    const raw = await readAudio(m.file, src, s.a, s.b);
+    if (!raw) { if (src.hasAudio) throw new Error('son de la vidéo illisible'); continue; }
+    const ch = timeStretch(raw.channels, raw.sampleRate, s.speed);
+    const buf = off.createBuffer(ch.length, ch[0].length, raw.sampleRate);
+    ch.forEach((c, i) => buf.copyToChannel(c, i));
+    const node = off.createBufferSource();
+    node.buffer = buf;
+    const g = off.createGain(), d = segDur(s), steps = Math.max(2, Math.ceil(d * 100));
+    g.gain.setValueCurveAtTime(Float32Array.from({ length: steps }, (_, i) => s.vol * (1 - blackAt(k, (i / (steps - 1)) * d))), startOf(k), d);
+    node.connect(g).connect(off.destination);
+    node.start(startOf(k), 0, d);
+  }
+  const out = await off.startRendering();
+  onProgress?.(0.8);
+  if (M.tracks.length) await mixMusic(out, rate);
+  onProgress?.(1);
+  return out;
+}
+
+async function mixMusic(buf, rate) {
+  const L = buf.getChannelData(0), R = buf.getChannelData(1), n = buf.length, T = n / rate;
+  // Même règle que pendant la lecture : mesure de la voix 60 fois par seconde sur 1024 échantillons.
+  const TICK = 1 / 60, ticks = Math.ceil(T / TICK) + 1;
+  const ducks = new Float32Array(ticks);
+  let dk = 1;
+  for (let i = 0; i < ticks; i++) {
+    const end = Math.min(n, Math.round(i * TICK * rate));
+    let e = 0;
+    for (let j = Math.max(0, end - 1024); j < end; j++) { const v = (L[j] + R[j]) / 2; e += v * v; }
+    const talking = Math.sqrt(e / 1024) > 0.015;
+    dk += ((talking ? DUCK : 1) - dk) * (talking ? 0.2 : 0.03);
+    ducks[i] = dk;
+  }
+  const decoded = new Map();
+  for (const tr of M.tracks) {
+    const song = songOf(tr);
+    if (!song) continue;
+    if (!decoded.has(song.id)) decoded.set(song.id, await new OfflineAudioContext(2, 1, rate).decodeAudioData(await song.file.arrayBuffer()));
+    const sb = decoded.get(song.id), sL = sb.getChannelData(0), sR = sb.getChannelData(sb.numberOfChannels > 1 ? 1 : 0);
+    const p0 = Math.max(0, Math.round(tr.t * rate)), p1 = Math.min(n, Math.round((tr.t + tr.dur) * rate));
+    let tick = -1, g = 0;
+    for (let p = p0; p < p1; p++) {
+      const time = p / rate, local = time - tr.t;
+      const i = Math.floor(time / TICK);
+      if (i !== tick) {
+        tick = i;
+        let k = 1;
+        if (M.fadeIn) k = Math.min(k, clamp01(time / (FADE * 2)));
+        if (M.fadeOut) k = Math.min(k, clamp01((T - time) / (FADE * 4)));
+        const f = Math.min(tr.fin ? local / tr.fin : 1, tr.fout ? (tr.dur - local) / tr.fout : 1);
+        g = tr.vol * clamp01(f) * k * (tr.duck ? ducks[i] : 1);
+      }
+      const idx = Math.round((tr.off + (tr.loop ? local % loopLen(tr) : local)) * rate);
+      if (idx >= sL.length) continue;
+      L[p] += sL[idx] * g;
+      R[p] += sR[idx] * g;
+    }
+  }
+}
+
+async function exportRealtime(audioOnly) {
+  audio();
+  await ac.resume();
   sizeCanvas(M.quality);
   const [W, H] = [canvas.width, canvas.height];
   const stream = new MediaStream([...(audioOnly ? [] : canvas.captureStream(30).getVideoTracks()), ...recDest.stream.getAudioTracks()]);
@@ -674,25 +826,9 @@ async function exportVideo(audioOnly = false) {
   clearInterval(progress);
   t.remove();
   speaker.gain.value = 1;
-  release();
-  M.exporting = false;
-  sizeCanvas('preview');
-  draw();
   const type = (mime || (audioOnly ? 'audio/webm' : 'video/webm')).split(';')[0];
   const ext = audioOnly ? (type.includes('mp4') ? 'm4a' : 'weba') : (type.includes('mp4') ? 'mp4' : 'webm');
-  const name = `montage_${new Date().toISOString().slice(0, 10)}.${ext}`;
-  const blob = new Blob(chunks, { type });
-  download(blob, name);
-  if (audioOnly) ui.toast('✅ Son exporté', 'ok');
-  else {
-    const t2 = ui.toast('✅ Montage exporté. ', 'ok', 12000);
-    const b = document.createElement('button');
-    b.className = 'btn ghost sm';
-    b.textContent = '✂ En faire des clips';
-    b.onclick = () => { t2.remove(); ui.toClipping(new File([blob], name, { type })); };
-    t2.append(b);
-  }
-  ui.notify(audioOnly ? 'Son du montage exporté' : 'Montage exporté');
+  return { blob: new Blob(chunks, { type }), type, ext };
 }
 
 const download = saveBlob;
