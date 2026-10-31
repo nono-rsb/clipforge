@@ -1,9 +1,9 @@
 // Version installée sur l'écran d'accueil (iPhone, Android) : l'app reste utilisable sans connexion.
 // Réseau d'abord pour toujours avoir la dernière version ; le cache ne sert que hors ligne.
-const CACHE = 'clipforge-v2';
+const CACHE = 'clipforge-v3';
 const SHELL = [
   './', 'index.html', 'legal.html', 'styles.css', 'manifest.webmanifest', 'icons/apple-touch-icon.png', 'icons/icon-192.png',
-  ...['analyzer', 'app', 'cache', 'emoji', 'exporter', 'faces', 'montage', 'a11y', 'renderer', 'save', 'tour', 'transcribe', 'whisper-worker'].map(f => `js/${f}.js`),
+  ...['analyzer', 'app', 'cache', 'emoji', 'exporter', 'fastexport', 'mp4-muxer', 'mp4box.all.min', 'faces', 'montage', 'a11y', 'renderer', 'save', 'tour', 'transcribe', 'whisper-worker'].map(f => `js/${f}.js`),
 ];
 const FONTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 

@@ -2,6 +2,11 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-10-31 (2e série) — Vitesse
+
+90. Export rapide des clips : au lieu de rejouer la vidéo en temps réel, ClipForge lit directement les images du fichier, les dessine et les encode aussi vite que l'ordinateur le permet (carte graphique utilisée quand elle est disponible). Sur la machine de test, un clip de 46 s s'exporte en 16 s au lieu de 47 s, sans écran à garder visible pour le son. Mêmes réglages (vitesse avec voix inchangée, musique, fondus, bips, rotation des vidéos de téléphone). Les fichiers MP4/MOV en profitent ; les autres formats (WebM, MKV…) gardent l'export en temps réel
+91. Le temps restant affiché pendant l'export est calculé sur la vitesse réelle de l'export
+
 ## 2026-10-31
 
 89. Recadrage à la main directement sur l'image : dans l'éditeur, glisser l'aperçu de gauche à droite déplace le cadre (passe en recadrage manuel en partant de la position suivie automatiquement) ; glisser de haut en bas déplace toujours les sous-titres, un clic lance ou met en pause ; Ctrl+Z annule

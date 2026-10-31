@@ -742,9 +742,12 @@ async function runExport(clips) {
   const wasPlaying = !video.paused;
   video.pause();
   const t = toast('', '', 0);
-  // Temps restant : l'export se fait en temps réel, à la vitesse choisie pour chaque clip.
+  // Temps restant : estimé d'après la vitesse réelle de l'export (plus rapide que la lecture
+  // quand l'export rapide est disponible), à la vitesse choisie pour chaque clip.
   const realLen = c => (c.end - c.start) / (c.opts.speed || 1);
-  let left = clips.reduce((a, c) => a + realLen(c), 0);
+  const totalLen = clips.reduce((a, c) => a + realLen(c), 0);
+  const t0 = performance.now();
+  let doneLen = 0;
   try {
     for (const [i, clip] of clips.entries()) {
       const card = document.querySelector(`.card[data-id="${clip.id}"]`);
@@ -752,16 +755,17 @@ async function runExport(clips) {
       const bar = card?.querySelector('.exp-bar i');
       const label = clips.length > 1 ? `Export ${i + 1}/${clips.length}` : 'Export';
       const { blob, ext } = await exportClip({
-        url: state.url, clip, env, quality: state.settings.quality, fps: +state.settings.fps, music: state.music,
+        url: state.url, file: state.file, clip, env, quality: state.settings.quality, fps: +state.settings.fps, music: state.music,
         onProgress: p => {
           const pc = Math.round(clamp(p, 0, 1) * 100);
-          const rest = left - clamp(p, 0, 1) * realLen(clip);
+          const done = doneLen + clamp(p, 0, 1) * realLen(clip);
+          const rest = done > 1 ? (performance.now() - t0) / 1000 / done * (totalLen - done) : totalLen - done;
           t.textContent = `⏺ ${label} — ${pc} % · reste ~${fmtTime(rest)} · « ${clip.title.slice(0, 40)} » (gardez l'onglet visible)`;
           if (bar) bar.style.width = `${pc}%`;
         },
       });
       card?.classList.remove('exporting');
-      left -= realLen(clip);
+      doneLen += realLen(clip);
       saveBlob(blob, `${String(i + 1).padStart(2, '0')}_${clip.score}_${safeName(clip.title)}.${ext}`);
     }
     toast(clips.length > 1 ? `✅ ${clips.length} clips exportés` : '✅ Clip exporté', 'ok');

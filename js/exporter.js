@@ -1,6 +1,9 @@
-// Export d'un clip : rendu image par image sur un canvas + audio d'origine → MediaRecorder.
+// Export d'un clip : rendu image par image sur un canvas + audio d'origine.
+// Export rapide (WebCodecs, plus vite que le temps réel) quand c'est possible, sinon
+// lecture en temps réel enregistrée par MediaRecorder.
 import { seekTo } from './analyzer.js';
 import { renderFrame, ASPECTS, isSwear } from './renderer.js';
+import { fastAvailable, openSource, eachFrame, readAudio, timeStretch, makeEncoder } from './fastexport.js';
 
 const MIMES = [
   'video/mp4;codecs=avc1.640028,mp4a.40.2',
@@ -22,7 +25,94 @@ export function outputSize(aspect, quality) {
   return [Math.round(w * k / 2) * 2, Math.round(h * k / 2) * 2];
 }
 
-export async function exportClip({ url, clip, env, quality = '1080', fps = 30, music = null, onProgress, signal }) {
+export async function exportClip(args) {
+  if (args.file && fastAvailable()) {
+    try { return await exportFast(args); }
+    catch (e) {
+      if (args.signal?.aborted) throw e;
+      console.warn('Export rapide impossible, export en temps réel :', e);
+    }
+  }
+  return exportRealtime(args);
+}
+
+// Son du clip mixé hors temps réel : mêmes réglages que l'export en temps réel
+// (volume, fondus, bips de censure, vitesse sans changer la voix, musique en boucle).
+async function mixAudio({ file, src, clip, music, rate }) {
+  const o = clip.opts, speed = o.speed || 1;
+  const real = (clip.end - clip.start) / speed;
+  const off = new OfflineAudioContext(2, Math.max(1, Math.ceil(real * rate)), rate);
+  const raw = await readAudio(file, src, clip.start, clip.end);
+  if (!raw && src.hasAudio) throw new Error('son de la vidéo illisible');
+  if (raw) {
+    const ch = timeStretch(raw.channels, raw.sampleRate, speed);
+    const buf = off.createBuffer(ch.length, ch[0].length, raw.sampleRate);
+    ch.forEach((c, i) => buf.copyToChannel(c, i));
+    const s = off.createBufferSource();
+    s.buffer = buf;
+    const vol = o.volume ?? 1, voice = off.createGain(), bleep = off.createGain();
+    voice.gain.value = vol;
+    s.connect(voice).connect(bleep).connect(off.destination);
+    if (o.fade) {
+      voice.gain.setValueAtTime(0, 0);
+      voice.gain.linearRampToValueAtTime(vol, 0.4);
+      voice.gain.setValueAtTime(vol, Math.max(0.4, real - 0.4));
+      voice.gain.linearRampToValueAtTime(0, real);
+    }
+    const swears = o.censor ? (clip.words || []).filter(w => isSwear(w.w) && w.e > clip.start && w.s < clip.end) : [];
+    if (swears.length) {
+      const osc = off.createOscillator(), bg = off.createGain();
+      osc.frequency.value = 1000;
+      bg.gain.value = 0;
+      osc.connect(bg).connect(off.destination);
+      for (const w of swears) {
+        const a = Math.max(0, (w.s - clip.start) / speed), b = (w.e - clip.start) / speed;
+        bleep.gain.setValueAtTime(0, a); bleep.gain.setValueAtTime(1, b);
+        bg.gain.setValueAtTime(0.18, a); bg.gain.setValueAtTime(0, b);
+      }
+      osc.start(0);
+    }
+    s.start(0);
+  }
+  if (music?.url && o.music) {
+    const m = off.createBufferSource();
+    m.buffer = await off.decodeAudioData(await (await fetch(music.url)).arrayBuffer());
+    m.loop = true;
+    const mg = off.createGain();
+    mg.gain.value = o.musicVol ?? 0.15;
+    m.connect(mg).connect(off.destination);
+    m.start(0);
+  }
+  return off.startRendering();
+}
+
+async function exportFast({ file, clip, env, quality = '1080', fps = 30, music = null, onProgress, signal }) {
+  const src = await openSource(file);
+  const o = clip.opts, speed = o.speed || 1;
+  const [W, H] = outputSize(o.aspect, quality);
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const count = Math.max(1, Math.round((clip.end - clip.start) / speed * fps));
+  const enc = await makeEncoder({ W, H, fps, withAudio: true });
+  try {
+    await enc.audio(await mixAudio({ file, src, clip, music, rate: enc.sampleRate }));
+    await eachFrame({
+      file, src, a: clip.start, b: clip.end, count, signal,
+      timeAt: k => clip.start + (k / fps) * speed,
+      onFrame: (frame, t, k) => {
+        renderFrame(ctx, frame, clip, t, env);
+        enc.frame(canvas, k);
+        onProgress?.((k + 1) / count);
+      },
+      pace: () => enc.drain(),
+    });
+    if (signal?.aborted) throw new DOMException('Export annulé', 'AbortError');
+    return { blob: await enc.finish(), ext: 'mp4', fast: true };
+  } finally { enc.close(); }
+}
+
+async function exportRealtime({ url, clip, env, quality = '1080', fps = 30, music = null, onProgress, signal }) {
   const o = clip.opts;
   const speed = o.speed || 1;
   const [W, H] = outputSize(clip.opts.aspect, quality);
