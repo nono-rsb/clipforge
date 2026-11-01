@@ -3,6 +3,7 @@
 // le permet. Le son est mixé hors temps réel (OfflineAudioContext). Quand le fichier ou le
 // navigateur ne s'y prête pas, l'appelant repasse sur l'export en temps réel.
 import { Muxer, ArrayBufferTarget, StreamTarget } from './mp4-muxer.js';
+import { isMatroska, openMatroska } from './mkv.js';
 
 let boxLib = null;
 function loadMp4box() {
@@ -47,6 +48,11 @@ export function openSource(file) {
 }
 
 async function open(file) {
+  if (await isMatroska(file)) {
+    const src = await openMatroska(file);
+    if (!(await VideoDecoder.isConfigSupported(src.video.config)).supported) throw new Error(`codec ${src.video.config.codec} non décodable`);
+    return src;
+  }
   await loadMp4box();
   const boxes = await topBoxes(file);
   const moov = boxes.find(b => b.type === 'moov');

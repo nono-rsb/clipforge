@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-01
+
+94. Export et analyse rapides aussi pour les fichiers MKV et WebM (enregistrements OBS, vidéos WebM) : ClipForge lit maintenant ces fichiers directement au lieu de repasser par la lecture en temps réel. Sur une vidéo MKV de 10 min, l'analyse passe de 22 s à 9,5 s (et de plus de 10 min à 10 s pour un MKV sans index, comme après un enregistrement OBS interrompu) ; l'export d'un clip est 2 à 3 fois plus rapide comme pour les MP4
+
 ## 2026-10-31 (2e série) — Vitesse
 
 90. Export rapide des clips : au lieu de rejouer la vidéo en temps réel, ClipForge lit directement les images du fichier, les dessine et les encode aussi vite que l'ordinateur le permet (carte graphique utilisée quand elle est disponible). Sur la machine de test, un clip de 46 s s'exporte en 16 s au lieu de 47 s, sans écran à garder visible pour le son. Mêmes réglages (vitesse avec voix inchangée, musique, fondus, bips, rotation des vidéos de téléphone). Les fichiers MP4/MOV en profitent ; les autres formats (WebM, MKV…) gardent l'export en temps réel
