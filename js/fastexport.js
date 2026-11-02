@@ -98,6 +98,17 @@ async function open(file) {
   return { video, audio, hasAudio: !!at };
 }
 
+// Durée lue dans le fichier (dernière image), pour les vidéos dont le navigateur ne connaît pas
+// la durée (MKV d'un enregistrement OBS interrompu, WebM en direct). null si impossible.
+export async function fileDuration(file) {
+  if (!fastAvailable()) return null;
+  try {
+    const s = (await openSource(file)).video.samples;
+    const last = s.reduce((a, x) => (x.cts + x.duration > a.cts + a.duration ? x : a), s[0]);
+    return last ? (last.cts + last.duration) / last.timescale : null;
+  } catch { return null; }
+}
+
 // Rotation enregistrée par les téléphones (matrice de la piste).
 function rotationOf(m) {
   if (!m) return 0;

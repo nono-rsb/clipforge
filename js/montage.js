@@ -4,7 +4,7 @@
 import { clamp, clamp01, fmtTime, seekTo, decodeAudio, decodeAudioSmart, computeEnergy, levelDb, resampleTo16k, buildWords } from './analyzer.js';
 import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer } from './renderer.js';
 import { pickMime, outputSize } from './exporter.js';
-import { fastAvailable, openSource, eachFrame, readAudio, timeStretch, makeEncoder } from './fastexport.js';
+import { fastAvailable, openSource, eachFrame, readAudio, timeStretch, makeEncoder, fileDuration } from './fastexport.js';
 import { transcribePcm } from './transcribe.js';
 import { saveBlob, keepAwake, keepData } from './save.js';
 import { startTour } from './tour.js';
@@ -127,8 +127,11 @@ async function addFiles(files) {
       els.forEach(v => v.remove());
       continue;
     }
+    // Sans durée connue (MKV d'un enregistrement interrompu…), la timeline serait infinie.
+    let duration = els[0].duration;
+    if (!Number.isFinite(duration)) duration = (await fileDuration(f)) ?? await forceDuration(els[0]);
     const m = {
-      id: id('m'), name: f.name, file: f, url, els, duration: els[0].duration,
+      id: id('m'), name: f.name, file: f, url, els, duration,
       w: els[0].videoWidth, h: els[0].videoHeight, color: COLORS[M.media.length % COLORS.length], thumb: '', energy: null,
     };
     M.media.push(m);
@@ -141,6 +144,18 @@ async function addFiles(files) {
   render();
   seek(M.t);
   offerRestore();
+}
+
+// Le navigateur calcule la durée s'il doit aller tout au bout de la vidéo.
+async function forceDuration(v) {
+  await new Promise(res => {
+    v.addEventListener('durationchange', function h() {
+      if (Number.isFinite(v.duration)) { v.removeEventListener('durationchange', h); res(); }
+    });
+    v.currentTime = 1e101;
+  });
+  await seekTo(v, 0);
+  return v.duration;
 }
 
 async function thumbnail(m) {

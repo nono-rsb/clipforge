@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-02
+
+95. Les vidéos sans durée enregistrée (MKV d'un enregistrement OBS interrompu, WebM en direct) ne bloquent plus le montage : leur durée est lue directement dans le fichier (0,4 s au lieu d'un montage figé) ; le Clipping s'en sert aussi au lieu de faire parcourir toute la vidéo au navigateur
+
 ## 2026-11-01
 
 94. Export et analyse rapides aussi pour les fichiers MKV et WebM (enregistrements OBS, vidéos WebM) : ClipForge lit maintenant ces fichiers directement au lieu de repasser par la lecture en temps réel. Sur une vidéo MKV de 10 min, l'analyse passe de 22 s à 9,5 s (et de plus de 10 min à 10 s pour un MKV sans index, comme après un enregistrement OBS interrompu) ; l'export d'un clip est 2 à 3 fois plus rapide comme pour les MP4

@@ -5,7 +5,7 @@ import {
 import { loadFaceDetector, detectFaces } from './faces.js';
 import { renderFrame, groupWords, CAPTION_STYLES, CAPTION_FONTS, FILTERS, isSwear } from './renderer.js';
 import { exportClip, outputSize } from './exporter.js';
-import { fastAvailable, openSource, keyframePlan, keyframes } from './fastexport.js';
+import { fastAvailable, openSource, keyframePlan, keyframes, fileDuration } from './fastexport.js';
 import { transcribePcm } from './transcribe.js';
 import { saveBlob, setSaveToast, keepAwake, keepData } from './save.js';
 import { initA11y } from './a11y.js';
@@ -178,8 +178,11 @@ async function loadFile(file) {
     toast('Ce format vidéo n\'est pas lisible par le navigateur. Essayez un MP4 (H.264).', 'err', 8000);
     return;
   }
-  if (!Number.isFinite(video.duration)) {
-    // WebM sans durée dans l'en-tête : on force le navigateur à la calculer.
+  // Durée absente de l'en-tête (WebM en direct, MKV d'un enregistrement interrompu) :
+  // lue directement dans le fichier, sinon on force le navigateur à la calculer.
+  const fileDur = Number.isFinite(video.duration) ? null : await fileDuration(file);
+  if (fileDur) state.duration = fileDur;
+  else if (!Number.isFinite(video.duration)) {
     await new Promise(res => {
       video.addEventListener('durationchange', function h() {
         if (Number.isFinite(video.duration)) { video.removeEventListener('durationchange', h); res(); }
@@ -188,12 +191,12 @@ async function loadFile(file) {
     });
     await seekTo(video, 0);
   }
-  state.duration = video.duration;
-  prev.currentTime = Math.min(5, video.duration / 3);
+  if (!fileDur) state.duration = video.duration;
+  prev.currentTime = Math.min(5, state.duration / 3);
   $('.dz-empty').classList.add('hidden');
   $('.dz-file').classList.remove('hidden');
   $('#dzName').textContent = file.name;
-  $('#dzInfo').textContent = `${fmtTime(video.duration)} · ${video.videoWidth}×${video.videoHeight} · ${(file.size / 1e6).toFixed(0)} Mo`;
+  $('#dzInfo').textContent = `${fmtTime(state.duration)} · ${video.videoWidth}×${video.videoHeight} · ${(file.size / 1e6).toFixed(0)} Mo`;
   $('#generate').disabled = false;
 }
 
