@@ -347,6 +347,8 @@ main:has(#screen-montage.active) { max-width: 1640px; }
 #preview { touch-action: none; }
 @media (max-width: 700px) { .help-cols { grid-template-columns: 1fr; } }
 .round.sm { color: var(--text); border: 1px solid var(--line); font-weight: 700; }
+.round.sm.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.round:disabled { opacity: .35; cursor: default; }
 .mt-seg .hd { position: absolute; top: 0; bottom: 0; width: 9px; cursor: ew-resize; z-index: 2; }
 .mt-seg .hd.l { left: 0; }
 .mt-seg .hd.r { right: 0; }

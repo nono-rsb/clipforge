@@ -1030,6 +1030,7 @@ function updateCaption() {
 function syncEditor() {
   const c = state.editing, o = c.opts;
   sizePreview();
+  syncZonesBtn();
   $$('.chips[data-opt]').forEach(ch => ch.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === o[ch.dataset.opt])));
   $$('[data-bool]').forEach(i => { i.checked = !!o[i.dataset.bool]; });
   $$('#styleGrid button').forEach(b => b.classList.toggle('on', b.dataset.style === o.capStyle));
@@ -1095,12 +1096,54 @@ function drawWave() {
   if (pt >= a && pt <= b) { x.fillStyle = '#ff4fd8'; x.fillRect(toX(pt), 0, dpr, H); }
 }
 
+// Zones recouvertes par l'interface de TikTok, Reels et Shorts en 9:16 (barre du haut, boutons
+// à droite, pseudo et description en bas), en fractions de l'image. Affichées seulement dans l'aperçu.
+const UI_ZONES = [[0, 0, 1, 0.09], [0.84, 0.38, 1, 0.78], [0, 0.78, 1, 1]];
+let showZones = store.get('zones') === '1';
+function drawZones(ctx, c) {
+  const { width: W, height: H } = ctx.canvas;
+  const capY = c.opts.captions ? c.opts.capPos : null;
+  const hidden = capY != null && (capY > 0.76 || capY < 0.11);
+  ctx.save();
+  ctx.fillStyle = hidden ? 'rgba(255,60,60,.38)' : 'rgba(255,255,255,.16)';
+  ctx.strokeStyle = 'rgba(255,255,255,.7)';
+  ctx.setLineDash([W * 0.012, W * 0.012]);
+  ctx.lineWidth = Math.max(1, W * 0.003);
+  for (const [x0, y0, x1, y1] of UI_ZONES) {
+    ctx.fillRect(x0 * W, y0 * H, (x1 - x0) * W, (y1 - y0) * H);
+    ctx.strokeRect(x0 * W, y0 * H, (x1 - x0) * W, (y1 - y0) * H);
+  }
+  ctx.setLineDash([]);
+  ctx.font = `700 ${Math.round(W * 0.034)}px Inter, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(0,0,0,.8)';
+  ctx.shadowBlur = W * 0.01;
+  ctx.fillText(hidden ? '⚠ Sous-titres cachés par l\'appli : remonte-les' : 'Zone cachée par TikTok / Reels / Shorts', W / 2, 0.89 * H);
+  ctx.restore();
+}
+function toggleZones() {
+  showZones = !showZones;
+  store.set('zones', showZones ? '1' : '0');
+  syncZonesBtn();
+}
+function syncZonesBtn() {
+  const b = $('#zonesBtn');
+  const vertical = state.editing?.opts.aspect === '9:16';
+  b.classList.toggle('on', showZones && vertical);
+  b.setAttribute('aria-pressed', String(showZones && vertical));
+  b.disabled = !vertical;
+  b.title = vertical ? 'Zones cachées par TikTok, Reels et Shorts (Z)' : 'Zones cachées par TikTok, Reels et Shorts : seulement en 9:16';
+}
+$('#zonesBtn').addEventListener('click', toggleZones);
+
 let lastWave = 0;
 function loop() {
   const c = state.editing;
   if (!c) return;
   if (!video.paused && (video.currentTime >= c.end || video.ended)) video.currentTime = c.start;
   renderFrame(pctx, video, c, video.currentTime, env);
+  if (showZones && c.opts.aspect === '9:16') drawZones(pctx, c);
   const rel = (video.currentTime - c.start) / (c.opts.speed || 1);
   syncMusic();
   const tt = video.currentTime;
@@ -1196,6 +1239,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'KeyO') { remember(); setTrim('end', video.currentTime); }
   if (e.code === 'KeyM') toggleMute();
   if (e.code === 'KeyF') toggleFs();
+  if (e.code === 'KeyZ' && !e.ctrlKey && !e.metaKey && state.editing.opts.aspect === '9:16') toggleZones();
 });
 
 $$('.tabs button').forEach(b => b.addEventListener('click', () => {

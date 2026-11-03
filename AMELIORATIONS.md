@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-03
+
+96. Zones cachées par TikTok, Reels et Shorts : dans l'éditeur, le bouton 📱 (ou la touche Z) affiche par-dessus l'aperçu 9:16 les parties recouvertes par l'interface des applis (barre du haut, boutons à droite, pseudo et description en bas) ; elles passent en rouge avec un avertissement si les sous-titres tombent dedans. Rien n'est ajouté à la vidéo exportée ; le choix est mémorisé
+
 ## 2026-11-02
 
 95. Les vidéos sans durée enregistrée (MKV d'un enregistrement OBS interrompu, WebM en direct) ne bloquent plus le montage : leur durée est lue directement dans le fichier (0,4 s au lieu d'un montage figé) ; le Clipping s'en sert aussi au lieu de faire parcourir toute la vidéo au navigateur
