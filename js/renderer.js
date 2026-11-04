@@ -139,6 +139,9 @@ function punchTimes(words) {
   return times;
 }
 
+// Zoom dynamique à l'instant t pour une liste de mots (aussi utilisé par le montage).
+export const punchZoom = (words, t) => punchAt(punchTimes(words), t);
+
 function punchAt(times, t) {
   let k = 0;
   for (const p of times) {

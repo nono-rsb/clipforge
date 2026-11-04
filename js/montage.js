@@ -2,7 +2,7 @@
 // suppression automatique des silences, textes, musique, transitions, export.
 // Tout se joue en direct sur un canvas ; l'export enregistre ce rendu (comme pour les clips).
 import { clamp, clamp01, fmtTime, seekTo, decodeAudio, decodeAudioSmart, computeEnergy, levelDb, resampleTo16k, buildWords } from './analyzer.js';
-import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer } from './renderer.js';
+import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer, punchZoom } from './renderer.js';
 import { pickMime, outputSize } from './exporter.js';
 import { fastAvailable, openSource, eachFrame, readAudio, timeStretch, makeEncoder, fileDuration } from './fastexport.js';
 import { transcribePcm } from './transcribe.js';
@@ -415,7 +415,9 @@ function draw(src) {
       ctx.save();
       ctx.filter = FILTERS[s.filter]?.css || 'none';
       // Effet Ken Burns : zoom lent et continu sur toute la durée du segment.
-      const z = (s.zoom || 1) * (s.kb ? 1 + 0.15 * clamp01(local / d) : 1);
+      let z = (s.zoom || 1) * (s.kb ? 1 + 0.15 * clamp01(local / d) : 1);
+      // Zoom dynamique : petit « punch-in » sur les mots forts des sous-titres.
+      if (M.caps.punch && M.words?.length) z *= punchZoom(M.words, M.t);
       if (s.layout === 'fit') drawFit(el, W, H); else drawFill(el, W, H, z, s.cx ?? 0.5);
       ctx.restore();
     }
@@ -898,7 +900,8 @@ function timelineWords() {
 }
 
 function buildCaptions() {
-  M.groups = groupWords(timelineWords(), 3);
+  M.words = timelineWords();
+  M.groups = groupWords(M.words, 3);
 }
 
 // Sous-titres du montage en .srt (YouTube, TikTok, Premiere…) : phrases de 42 caractères
@@ -1005,6 +1008,7 @@ function syncCapsUi() {
   $('#mtCapStyle').value = M.caps.style;
   $('#mtCapPos').value = M.caps.pos;
   $('#mtCapSize').value = M.caps.size;
+  $('#mtPunch').checked = !!M.caps.punch;
 }
 
 function render() {
@@ -1454,6 +1458,7 @@ export function initMontage(helpers) {
   $('#mtTranscribe').addEventListener('click', transcribeAll);
   $('#mtCapStyle').innerHTML = Object.entries(CAPTION_STYLES).map(([k, st]) => `<option value="${k}">${st.label}</option>`).join('');
   $('#mtCapsOn').addEventListener('change', e => { M.caps.on = e.target.checked; autosave(); draw(); });
+  $('#mtPunch').addEventListener('change', e => { M.caps.punch = e.target.checked; autosave(); draw(); });
   $('#mtCapStyle').addEventListener('change', e => { M.caps.style = e.target.value; autosave(); draw(); });
   $('#mtCapPos').addEventListener('input', e => { M.caps.pos = +e.target.value; autosave(); draw(); });
   $('#mtCapSize').addEventListener('input', e => { M.caps.size = +e.target.value; autosave(); draw(); });

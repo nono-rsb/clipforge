@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-04
+
+97. Montage : « ⚡ Zoom sur les mots forts », le petit zoom dynamique du Clipping, maintenant aussi sur les longues vidéos (dans Sous-titres, une fois les sous-titres générés) ; visible dans l'aperçu et à l'export, retenu avec le projet
+
 ## 2026-11-03
 
 96. Zones cachées par TikTok, Reels et Shorts : dans l'éditeur, le bouton 📱 (ou la touche Z) affiche par-dessus l'aperçu 9:16 les parties recouvertes par l'interface des applis (barre du haut, boutons à droite, pseudo et description en bas) ; elles passent en rouge avec un avertissement si les sous-titres tombent dedans. Rien n'est ajouté à la vidéo exportée ; le choix est mémorisé
