@@ -1,7 +1,7 @@
 // Montage de vidéos longues : plusieurs vidéos sur une timeline, coupe, réorganisation,
 // suppression automatique des silences, textes, musique, transitions, export.
 // Tout se joue en direct sur un canvas ; l'export enregistre ce rendu (comme pour les clips).
-import { clamp, clamp01, fmtTime, seekTo, decodeAudio, decodeAudioSmart, computeEnergy, levelDb, resampleTo16k, buildWords } from './analyzer.js';
+import { clamp, clamp01, fmtTime, seekTo, decodeAudio, decodeAudioSmart, computeEnergy, levelDb, resampleTo16k, buildWords, parseFixes, fixWords } from './analyzer.js';
 import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer, punchZoom } from './renderer.js';
 import { pickMime, outputSize } from './exporter.js';
 import { fastAvailable, openSource, eachFrame, readAudio, timeStretch, makeEncoder, fileDuration } from './fastexport.js';
@@ -940,7 +940,9 @@ async function transcribeAll() {
       status.textContent = `${tag}Lecture du son…`;
       const pcm = await resampleTo16k(await decodeAudioSmart(m.file));
       const segs = await transcribePcm(pcm, $('#mtModel').value, $('#mtLang').value, txt => { status.textContent = tag + txt; });
-      m.words = buildWords(segs);
+      let fixes = '';
+      try { fixes = localStorage.getItem('clipforge.fixes'); } catch {}
+      m.words = fixWords(buildWords(segs), parseFixes(fixes));
     }
     buildCaptions();
     const n = M.media.reduce((a, m) => a + (m.words?.length || 0), 0);

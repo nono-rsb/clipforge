@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-05
+
+98. Corrections des sous-titres : sur l'accueil, un champ « Corrections des sous-titres » (une par ligne, ex. « squizi → Squeezie », « mine craft → Minecraft ») corrige automatiquement les noms, pseudos et mots que Whisper écrit mal, dans les sous-titres, les titres des clips et le montage. Le champ est mémorisé et s'applique aussi en relançant une vidéo déjà analysée
+
 ## 2026-11-04
 
 97. Montage : « ⚡ Zoom sur les mots forts », le petit zoom dynamique du Clipping, maintenant aussi sur les longues vidéos (dans Sous-titres, une fois les sous-titres générés) ; visible dans l'aperçu et à l'export, retenu avec le projet

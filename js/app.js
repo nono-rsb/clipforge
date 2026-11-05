@@ -1,6 +1,6 @@
 import {
   decodeAudioSmart, computeEnergy, resampleTo16k, analyzeVisual, makeTrack, refineFaces,
-  buildWords, findClips, fmtTime, seekTo, clamp, norm, isKeyword,
+  buildWords, findClips, fmtTime, seekTo, clamp, norm, isKeyword, parseFixes, fixWords,
 } from './analyzer.js';
 import { loadFaceDetector, detectFaces } from './faces.js';
 import { renderFrame, groupWords, CAPTION_STYLES, CAPTION_FONTS, FILTERS, isSwear } from './renderer.js';
@@ -154,6 +154,8 @@ $('#model').addEventListener('change', e => { state.settings.model = e.target.va
 $('#topics').value = store.get('topics') || '';
 state.settings.topics = $('#topics').value;
 $('#topics').addEventListener('input', e => { state.settings.topics = e.target.value; store.set('topics', e.target.value); });
+$('#fixes').value = store.get('fixes') || '';
+$('#fixes').addEventListener('input', e => store.set('fixes', e.target.value));
 
 const dz = $('#dropzone');
 $('#fileInput').addEventListener('change', e => e.target.files[0] && loadFile(e.target.files[0]));
@@ -410,6 +412,8 @@ async function generate() {
     saveAnalysis(key, { energy: state.energy, words: state.words, visual: structuredClone(state.visual) });
     }
     env.track = makeTrack(state.visual);
+    // Corrections de l'utilisateur (noms, pseudos…), appliquées à chaque fois pour suivre ses changements.
+    state.words = fixWords(state.words, parseFixes(store.get('fixes')));
 
     // 4. Détection
     setStep('detect', 'run', 0.3, 'Évaluation des passages candidats…');

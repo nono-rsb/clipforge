@@ -365,6 +365,28 @@ function makeDuo(S, times, reset, smooth, interp) {
 const HALLUCINATIONS = /amara\.org|sous-titr|merci d'avoir regard|thanks for watching|abonnez-vous/i;
 
 // Segments Whisper → mots horodatés (répartis selon leur longueur).
+// Corrections des sous-titres choisies par l'utilisateur, une par ligne : « squizi → Squeezie ».
+// Accepte aussi « = », « > » ou « -> » ; la partie gauche peut faire plusieurs mots.
+export function parseFixes(text) {
+  return (text || '').split('\n').map(l => l.split(/\s*(?:→|->|=>|=|>)\s*/)).filter(p => p.length === 2 && p[0].trim() && p[1].trim())
+    .map(([a, b]) => ({ from: a.trim().split(/\s+/).map(norm), to: b.trim() }));
+}
+
+// Applique les corrections aux mots transcrits (en gardant la ponctuation et les temps).
+export function fixWords(words, fixes) {
+  if (!fixes.length || !words.length) return words;
+  const out = [];
+  for (let i = 0; i < words.length;) {
+    const f = fixes.find(f => f.from.every((x, j) => words[i + j] && norm(words[i + j].w) === x));
+    if (!f) { out.push(words[i++]); continue; }
+    const last = words[i + f.from.length - 1];
+    const punct = last.w.match(/[^\p{L}\p{N}]*$/u)[0];
+    out.push({ ...words[i], w: f.to + (/[^\p{L}\p{N}]$/u.test(f.to) ? '' : punct), e: last.e });
+    i += f.from.length;
+  }
+  return out;
+}
+
 export function buildWords(segments) {
   const segs = segments
     .filter(s => s.text && !HALLUCINATIONS.test(s.text))
