@@ -386,6 +386,8 @@ function syncMusic() {
 /* ---------------- Rendu ---------------- */
 
 function sizeCanvas(quality) {
+  // En plein écran, l'aperçu est dessiné à la taille d'export pour rester net.
+  if (quality === 'preview' && document.fullscreenElement?.classList.contains('mt-preview')) quality = M.quality;
   const [W, H] = outputSize(M.aspect, quality);
   const k = quality === 'preview' ? 960 / Math.max(W, H) : 1;
   const w = Math.round(W * k), h = Math.round(H * k);
@@ -842,7 +844,7 @@ async function exportRealtime(audioOnly) {
   await stopped;
   clearInterval(progress);
   t.remove();
-  speaker.gain.value = 1;
+  speaker.gain.value = M.muted ? 0 : 1;
   const type = (mime || (audioOnly ? 'audio/webm' : 'video/webm')).split(';')[0];
   const ext = audioOnly ? (type.includes('mp4') ? 'm4a' : 'weba') : (type.includes('mp4') ? 'mp4' : 'webm');
   return { blob: new Blob(chunks, { type }), type, ext };
@@ -1484,8 +1486,20 @@ export function initMontage(helpers) {
   $('#mtQuality').addEventListener('change', e => { M.quality = e.target.value; });
   $('#mtMute').addEventListener('click', () => {
     audio();
-    speaker.gain.value = speaker.gain.value ? 0 : 1;
-    $('#mtMute').textContent = speaker.gain.value ? '🔊' : '🔇';
+    M.muted = !M.muted;
+    speaker.gain.value = M.muted ? 0 : 1;
+    $('#mtMute').textContent = M.muted ? '🔇' : '🔊';
+  });
+  // Plein écran de l'aperçu (l'image est redessinée en plus grand pour rester nette).
+  const toggleFs = () => {
+    const p = document.fullscreenElement ? document.exitFullscreen() : $('.mt-preview').requestFullscreen?.();
+    p?.catch(() => {});
+  };
+  $('#mtFs').addEventListener('click', toggleFs);
+  document.addEventListener('fullscreenchange', () => {
+    if (M.exporting) return;
+    sizeCanvas('preview');
+    draw();
   });
   // Clic sur la règle ou dans le vide de la timeline : déplace la tête de lecture.
   $('#mtInner').addEventListener('pointerdown', e => {
@@ -1508,6 +1522,8 @@ export function initMontage(helpers) {
     else if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); }
     else if ((e.ctrlKey || e.metaKey) && k === 'd') { e.preventDefault(); duplicate(); }
     else if (k === 's') split();
+    else if (k === 'f' && !e.ctrlKey && !e.metaKey) toggleFs();
+    else if (k === 'm' && !e.ctrlKey && !e.metaKey) $('#mtMute').click();
     else if (k === 't') addText();
     else if (e.key === 'Delete' || e.key === 'Backspace') remove();
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {

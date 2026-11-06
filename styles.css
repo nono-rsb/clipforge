@@ -344,6 +344,8 @@ main:has(#screen-montage.active) { max-width: 1640px; }
 .help-cols p { margin: 6px 0; font-size: 13.5px; color: var(--muted); }
 .help-cols b { display: block; margin-bottom: 6px; }
 #stageWrap:fullscreen { background: #000; }
+.mt-preview:fullscreen { height: 100%; border: none; border-radius: 0; background: #000; }
+.mt-preview:fullscreen #mtCanvas { max-width: 100%; max-height: 100%; border-radius: 0; box-shadow: none; }
 #preview { touch-action: none; }
 @media (max-width: 700px) { .help-cols { grid-template-columns: 1fr; } }
 .round.sm { color: var(--text); border: 1px solid var(--line); font-weight: 700; }
