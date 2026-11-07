@@ -444,3 +444,8 @@ body:has(#screen-montage.active) .site-foot { display: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Navigation entre les clips dans l'éditeur */
+.ed-nav { display: flex; align-items: center; gap: 4px; }
+.ed-nav .mono { min-width: 3.2em; text-align: center; font-size: 13px; }
+.ed-nav .btn:disabled { opacity: .35; cursor: default; }

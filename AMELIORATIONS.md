@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-07
+
+100. Éditeur : boutons ‹ › (et touches Page précédente / Page suivante) pour passer au clip précédent ou suivant sans fermer l'éditeur, dans l'ordre affiché sur la page des résultats, avec le numéro du clip (« 2/6 ») ; le clip quitté est enregistré
+
 ## 2026-11-06
 
 99. Montage : aperçu en plein écran (bouton ⛶ ou touche F), dessiné à la taille d'export pour rester net ; touche M pour couper ou remettre le son ; le son coupé reste coupé après un export

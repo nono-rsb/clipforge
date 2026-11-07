@@ -1007,11 +1007,37 @@ function openEditor(clip) {
   $('#editor').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
   syncEditor();
+  syncNav();
   video.currentTime = clip.start;
   video.muted = false;
   cancelAnimationFrame(raf);
   loop();
 }
+
+// Clips dans l'ordre affiché sur la page des résultats (tri et filtre compris).
+const shownClips = () => $$('.card[data-id]').map(c => state.clips.find(x => x.id === c.dataset.id)).filter(Boolean);
+
+function syncNav() {
+  const list = shownClips(), i = list.indexOf(state.editing);
+  $('#edPos').textContent = i >= 0 ? `${i + 1}/${list.length}` : '';
+  $('#edPrev').disabled = i <= 0;
+  $('#edNext').disabled = i < 0 || i >= list.length - 1;
+}
+
+// Passe au clip précédent ou suivant sans fermer l'éditeur (le clip quitté est enregistré).
+function stepClip(dir) {
+  const list = shownClips(), next = list[list.indexOf(state.editing) + dir];
+  if (!next) return;
+  const cur = state.editing;
+  video.pause();
+  music.pause();
+  video.playbackRate = 1;
+  refreshCard(cur);
+  persistClips();
+  openEditor(next);
+}
+$('#edPrev').addEventListener('click', () => stepClip(-1));
+$('#edNext').addEventListener('click', () => stepClip(1));
 
 function closeEditor() {
   const clip = state.editing;
@@ -1243,6 +1269,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'KeyO') { remember(); setTrim('end', video.currentTime); }
   if (e.code === 'KeyM') toggleMute();
   if (e.code === 'KeyF') toggleFs();
+  if (e.code === 'PageUp' || e.code === 'PageDown') { e.preventDefault(); stepClip(e.code === 'PageUp' ? -1 : 1); }
   if (e.code === 'KeyZ' && !e.ctrlKey && !e.metaKey && state.editing.opts.aspect === '9:16') toggleZones();
 });
 

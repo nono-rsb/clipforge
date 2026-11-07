@@ -332,11 +332,16 @@
   <div id="editor" class="editor hidden">
     <div class="ed-top">
       <button id="edClose" class="btn ghost sm">← Retour</button>
+      <div class="ed-nav">
+        <button id="edPrev" class="btn ghost sm icon" title="Clip précédent (Page précédente)" aria-label="Clip précédent">‹</button>
+        <span id="edPos" class="muted mono"></span>
+        <button id="edNext" class="btn ghost sm icon" title="Clip suivant (Page suivante)" aria-label="Clip suivant">›</button>
+      </div>
       <input id="edTitle" class="ed-title" spellcheck="false" aria-label="Titre du clip">
       <div class="ed-score" id="edScore"></div>
       <button id="edExport" class="btn primary">⬇ Exporter</button>
     </div>
-    <div class="ed-keys muted">Raccourcis : <kbd>Espace</kbd> lecture · <kbd>←</kbd><kbd>→</kbd> ±1 s (<kbd>Maj</kbd> ±5 s) · <kbd>I</kbd> / <kbd>O</kbd> début / fin ici · <kbd>M</kbd> son · <kbd>Ctrl+Z</kbd> annuler · <kbd>Échap</kbd> fermer</div>
+    <div class="ed-keys muted">Raccourcis : <kbd>Espace</kbd> lecture · <kbd>←</kbd><kbd>→</kbd> ±1 s (<kbd>Maj</kbd> ±5 s) · <kbd>I</kbd> / <kbd>O</kbd> début / fin ici · <kbd>M</kbd> son · <kbd>Ctrl+Z</kbd> annuler · <kbd>Pg↑</kbd> <kbd>Pg↓</kbd> clip précédent / suivant · <kbd>Échap</kbd> fermer</div>
     <div class="ed-body">
       <div class="ed-stage">
         <div class="stage-wrap" id="stageWrap"><canvas id="preview"></canvas></div>
