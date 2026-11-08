@@ -34,7 +34,7 @@ L'import par lien (YouTube…) marche avec l'exe et avec Node.js, mais pas sur l
 | Titre d'accroche | Bandeau affiché pendant les 3 premières secondes |
 | Éditeur | Découpe ±30 s avec forme d'onde, légende et hashtags suggérés, « appliquer à tous », raccourcis clavier (Espace, ←/→, I/O, M), annuler / rétablir (Ctrl+Z / Ctrl+Y) |
 | Effets | Zoom dynamique sur les mots forts, filtres couleur (Vif, Cinéma, Chaud, Froid, N&B), vitesse 1× à 1,5×, volume de la voix, fondu d'entrée et de sortie, musique de fond, filigrane @pseudo |
-| Accroche | Texte (ou proposé automatiquement), couleurs (blanc, noir, jaune), durée 2 à 5 s, miniature PNG |
+| Accroche | Texte (ou proposé automatiquement), couleurs (blanc, noir, jaune), durée 2 à 5 s, miniature PNG, appel à l'action en fin de clip (« Abonne-toi pour la suite ! ») |
 | Sous-titres malins | Corrections automatiques choisies par toi (« squizi → Squeezie »), Fond derrière le texte, palette d'emojis, mots-clés toujours en couleur, censure des gros mots (masqués et bipés), préréglages de style enregistrés |
 | Résultats | Recherche d'un mot dans la transcription (crée un clip autour), clip manuel, dupliquer, supprimer (avec annulation), sélection pour l'export, copie de toutes les légendes, clips retouchés retrouvés à la relance, filtre par score, tri par score, date ou durée |
 | Rapidité | L'analyse est gardée dans le navigateur : relancer la même vidéo est instantané. Notification quand l'analyse ou l'export finit, temps restant pendant l'export |

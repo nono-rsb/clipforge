@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-08
+
+101. Appel à l'action en fin de clip : dans l'onglet Accroche de l'éditeur, une option affiche « 🔔 Abonne-toi pour la suite ! » (texte modifiable et mémorisé) dans une bulle aux couleurs des sous-titres qui apparaît en rebondissant pendant les 2,5 dernières secondes ; inclus dans l'export, les préréglages et « Appliquer à tous les clips »
+
 ## 2026-11-07
 
 100. Éditeur : boutons ‹ › (et touches Page précédente / Page suivante) pour passer au clip précédent ou suivant sans fermer l'éditeur, dans l'ordre affiché sur la page des résultats, avec le numéro du clip (« 2/6 ») ; le clip quitté est enregistré

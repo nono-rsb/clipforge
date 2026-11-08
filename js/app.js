@@ -485,6 +485,7 @@ function defaultOpts() {
     capFont: 'montserrat', capColor: '', maxWords: 3, emojiSize: 1,
     filter: 'none', speed: 1, volume: 1, fade: false, music: !!state.music, musicVol: 0.15,
     watermark: store.get('watermark') || '', hookDur: 3, hookTheme: 'light', highlight: false, censor: false,
+    cta: false, ctaText: store.get('ctaText') || '🔔 Abonne-toi pour la suite !',
   };
 }
 
@@ -914,7 +915,7 @@ $('#hookSuggest').addEventListener('click', () => {
 
 // Préréglages : le style complet d'un clip, enregistré sous un nom, réutilisable sur les prochaines vidéos.
 const STYLE_KEYS = ['captions', 'capStyle', 'capSize', 'capPos', 'uppercase', 'emojis', 'capFont', 'capColor', 'maxWords', 'emojiSize',
-  'highlight', 'censor', 'capBg', 'punch', 'filter', 'speed', 'fade', 'watermark', 'hook', 'hookDur', 'hookTheme', 'progress', 'layout', 'zoom'];
+  'highlight', 'censor', 'capBg', 'punch', 'filter', 'speed', 'fade', 'watermark', 'hook', 'hookDur', 'hookTheme', 'progress', 'layout', 'zoom', 'cta', 'ctaText'];
 const presets = () => { try { return JSON.parse(store.get('presets') || '{}'); } catch { return {}; } };
 function fillPresets() {
   $('#presetList').innerHTML = '<option value="">— Choisir un préréglage —</option>'
@@ -1059,6 +1060,7 @@ function updateCaption() {
 
 function syncEditor() {
   const c = state.editing, o = c.opts;
+  $('#ctaText').value = o.ctaText ?? '';
   sizePreview();
   syncZonesBtn();
   $$('.chips[data-opt]').forEach(ch => ch.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === o[ch.dataset.opt])));
@@ -1327,6 +1329,7 @@ $$('[data-nudge]').forEach(b => b.addEventListener('click', () => {
 $('#edTitle').addEventListener('input', e => { state.editing.title = e.target.value; updateCaption(); });
 $('#edText').addEventListener('input', e => setClipText(state.editing, e.target.value));
 $('#hookText').addEventListener('input', e => { state.editing.opts.hookText = e.target.value; });
+$('#ctaText').addEventListener('input', e => { state.editing.opts.ctaText = e.target.value; store.set('ctaText', e.target.value); });
 $('#copyCaption').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('#edCaption').textContent); toast('Légende copiée', 'ok', 2000); }
   catch { toast('Copie impossible', 'err'); }
@@ -1334,7 +1337,7 @@ $('#copyCaption').addEventListener('click', async () => {
 $('#applyAll').addEventListener('click', () => {
   const src = state.editing.opts;
   const keys = ['captions', 'capStyle', 'capSize', 'capPos', 'uppercase', 'emojis', 'layout', 'reframe', 'podcast', 'aspect', 'zoom', 'progress', 'hook',
-    'capFont', 'capColor', 'maxWords', 'emojiSize', 'filter', 'speed', 'volume', 'fade', 'music', 'musicVol', 'watermark', 'hookDur', 'hookTheme', 'highlight', 'censor', 'capBg', 'punch'];
+    'capFont', 'capColor', 'maxWords', 'emojiSize', 'filter', 'speed', 'volume', 'fade', 'music', 'musicVol', 'watermark', 'hookDur', 'hookTheme', 'highlight', 'censor', 'capBg', 'punch', 'cta', 'ctaText'];
   state.clips.forEach(c => {
     if (c === state.editing) return;
     keys.forEach(k => { c.opts[k] = src[k]; });

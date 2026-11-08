@@ -109,6 +109,7 @@ export function renderFrame(ctx, video, clip, t, env) {
   }
   if (o.captions && clip.groups?.length) drawCaptions(ctx, clip.groups, t, o, W, H);
   if (o.hook) drawHook(ctx, o.hookText || clip.title, t - clip.start, W, H, o);
+  if (o.cta) drawCta(ctx, o.ctaText, clip.end - t, W, H, o);
   if (o.watermark) drawWatermark(ctx, o.watermark, W, H);
   if (o.progress) {
     const p = clamp01((t - clip.start) / (clip.end - clip.start));
@@ -356,6 +357,42 @@ function drawWord(ctx, style, text, x, y, w, base, active, accent, kw = null) {
   if (style === 'neon' && active) { ctx.shadowColor = accent; ctx.shadowBlur = base * 0.5; }
   ctx.fillStyle = active && style !== 'box' ? accent : kw || '#fff';
   ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+// Appel à l'action dans les dernières secondes (« Abonne-toi pour la suite ! »), qui apparaît en rebondissant.
+function drawCta(ctx, text, left, W, H, o = {}) {
+  const dur = 2.5 * (o.speed || 1);
+  if (!text || left < 0 || left > dur) return;
+  const dt = dur - left;
+  const pop = dt < 0.3 ? 0.6 + 0.4 * Math.sin((dt / 0.3) * Math.PI / 2) * 1.08 : 1;
+  const size = Math.round(Math.min(W, H * 0.75) * 0.05);
+  ctx.save();
+  ctx.globalAlpha = clamp01(dt / 0.15);
+  ctx.font = `900 ${size}px Inter, Arial, sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  const maxW = W * 0.8, lines = [];
+  let cur = '';
+  for (const w of text.split(/\s+/)) {
+    const tryL = cur ? cur + ' ' + w : w;
+    if (ctx.measureText(tryL).width > maxW && cur) { lines.push(cur); cur = w; } else cur = tryL;
+  }
+  if (cur) lines.push(cur);
+  lines.splice(2);
+  const lh = size * 1.25, pad = size * 0.75;
+  const bw = Math.max(...lines.map(l => ctx.measureText(l).width)) + pad * 2, bh = lines.length * lh + pad;
+  ctx.translate(W / 2, H * 0.42);
+  ctx.scale(pop, pop);
+  ctx.shadowColor = 'rgba(0,0,0,.4)';
+  ctx.shadowBlur = size * 0.7;
+  const acc = accentOf(o);
+  ctx.fillStyle = acc.toUpperCase() === '#FFFFFF' ? '#7C5CFF' : acc;
+  roundRect(ctx, -bw / 2, -bh / 2, bw, bh, bh / 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#111';
+  lines.forEach((l, i) => ctx.fillText(l, 0, -bh / 2 + pad / 2 + lh * (i + 0.5)));
   ctx.restore();
 }
 
