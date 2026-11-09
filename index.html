@@ -341,7 +341,7 @@
       <div class="ed-score" id="edScore"></div>
       <button id="edExport" class="btn primary">⬇ Exporter</button>
     </div>
-    <div class="ed-keys muted">Raccourcis : <kbd>Espace</kbd> lecture · <kbd>←</kbd><kbd>→</kbd> ±1 s (<kbd>Maj</kbd> ±5 s) · <kbd>I</kbd> / <kbd>O</kbd> début / fin ici · <kbd>M</kbd> son · <kbd>Ctrl+Z</kbd> annuler · <kbd>Pg↑</kbd> <kbd>Pg↓</kbd> clip précédent / suivant · <kbd>Échap</kbd> fermer</div>
+    <div class="ed-keys muted">Raccourcis : <kbd>Espace</kbd> lecture · <kbd>←</kbd><kbd>→</kbd> ±1 s (<kbd>Maj</kbd> ±5 s) · <kbd>I</kbd> / <kbd>O</kbd> début / fin ici · <kbd>M</kbd> son · <kbd>Ctrl+Z</kbd> annuler · <kbd>Pg↑</kbd> <kbd>Pg↓</kbd> clip précédent / suivant · <kbd>C</kbd> enchaîner · <kbd>Échap</kbd> fermer</div>
     <div class="ed-body">
       <div class="ed-stage">
         <div class="stage-wrap" id="stageWrap"><canvas id="preview"></canvas></div>
@@ -350,6 +350,7 @@
           <span id="tCur" class="mono">0:00</span>
           <input type="range" id="scrub" min="0" max="1" step="0.01" value="0">
           <span id="tDur" class="mono">0:00</span>
+          <button id="chainBtn" class="round sm" title="Enchaîner les clips : passe tout seul au suivant à la fin (C)" aria-pressed="false">⏭</button>
           <button id="zonesBtn" class="round sm" title="Zones cachées par TikTok, Reels et Shorts (Z)" aria-pressed="false">📱</button>
           <button id="muteBtn" class="round sm" title="Son">🔊</button>
           <button id="fsBtn" class="round sm" title="Plein écran (F)">⛶</button>

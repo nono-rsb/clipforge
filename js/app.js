@@ -1037,6 +1037,19 @@ function stepClip(dir) {
   persistClips();
   openEditor(next);
 }
+let chain = store.get('chain') === '1';
+function syncChain() {
+  $('#chainBtn').classList.toggle('on', chain);
+  $('#chainBtn').setAttribute('aria-pressed', String(chain));
+}
+function toggleChain() {
+  chain = !chain;
+  store.set('chain', chain ? '1' : '0');
+  syncChain();
+  toast(chain ? '⏭ Lecture enchaînée : les clips défilent à la suite' : 'Lecture enchaînée désactivée', '', 2200);
+}
+syncChain();
+$('#chainBtn').addEventListener('click', toggleChain);
 $('#edPrev').addEventListener('click', () => stepClip(-1));
 $('#edNext').addEventListener('click', () => stepClip(1));
 
@@ -1173,7 +1186,12 @@ let lastWave = 0;
 function loop() {
   const c = state.editing;
   if (!c) return;
-  if (!video.paused && (video.currentTime >= c.end || video.ended)) video.currentTime = c.start;
+  if (!video.paused && (video.currentTime >= c.end || video.ended)) {
+    // Lecture enchaînée : à la fin du clip, on passe au suivant (dans l'ordre des résultats).
+    const list = shownClips(), next = chain && list[list.indexOf(c) + 1];
+    if (next) { stepClip(1); video.play(); return; }
+    video.currentTime = c.start;
+  }
   renderFrame(pctx, video, c, video.currentTime, env);
   if (showZones && c.opts.aspect === '9:16') drawZones(pctx, c);
   const rel = (video.currentTime - c.start) / (c.opts.speed || 1);
@@ -1271,6 +1289,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'KeyO') { remember(); setTrim('end', video.currentTime); }
   if (e.code === 'KeyM') toggleMute();
   if (e.code === 'KeyF') toggleFs();
+  if (e.code === 'KeyC' && !e.ctrlKey && !e.metaKey) toggleChain();
   if (e.code === 'PageUp' || e.code === 'PageDown') { e.preventDefault(); stepClip(e.code === 'PageUp' ? -1 : 1); }
   if (e.code === 'KeyZ' && !e.ctrlKey && !e.metaKey && state.editing.opts.aspect === '9:16') toggleZones();
 });

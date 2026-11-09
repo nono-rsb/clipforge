@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-09
+
+102. Éditeur : lecture enchaînée (bouton ⏭ ou touche C) : à la fin d'un clip, ClipForge passe tout seul au suivant et continue la lecture, pour revoir tous les clips d'affilée comme un fil TikTok ; le choix est mémorisé
+
 ## 2026-11-08
 
 101. Appel à l'action en fin de clip : dans l'onglet Accroche de l'éditeur, une option affiche « 🔔 Abonne-toi pour la suite ! » (texte modifiable et mémorisé) dans une bulle aux couleurs des sous-titres qui apparaît en rebondissant pendant les 2,5 dernières secondes ; inclus dans l'export, les préréglages et « Appliquer à tous les clips »
