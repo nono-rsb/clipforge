@@ -2,7 +2,7 @@
 // suppression automatique des silences, textes, musique, transitions, export.
 // Tout se joue en direct sur un canvas ; l'export enregistre ce rendu (comme pour les clips).
 import { clamp, clamp01, fmtTime, seekTo, decodeAudio, decodeAudioSmart, computeEnergy, levelDb, resampleTo16k, buildWords, parseFixes, fixWords } from './analyzer.js';
-import { FILTERS, CAPTION_STYLES, groupWords, drawCaptionLayer, punchZoom } from './renderer.js';
+import { FILTERS, CAPTION_STYLES, CAPTION_FONTS, groupWords, drawCaptionLayer, punchZoom } from './renderer.js';
 import { pickMime, outputSize } from './exporter.js';
 import { fastAvailable, openSource, eachFrame, readAudio, timeStretch, makeEncoder, fileDuration } from './fastexport.js';
 import { transcribePcm } from './transcribe.js';
@@ -431,7 +431,7 @@ function draw(src) {
   }
   if (M.caps.on && M.groups.length) {
     drawCaptionLayer(ctx, M.groups, M.t, {
-      capStyle: M.caps.style, capSize: M.caps.size, capPos: M.caps.pos, uppercase: true, emojis: true, capFont: 'montserrat', emojiSize: 0.8,
+      capStyle: M.caps.style, capSize: M.caps.size, capPos: M.caps.pos, uppercase: true, emojis: true, capFont: M.caps.font || 'montserrat', emojiSize: 0.8,
     }, W, H);
   }
   M.texts.forEach(tx => { if (M.t >= tx.t && M.t <= tx.t + tx.dur) drawText(tx, W, H); });
@@ -903,7 +903,7 @@ function timelineWords() {
 
 function buildCaptions() {
   M.words = timelineWords();
-  M.groups = groupWords(M.words, 3);
+  M.groups = groupWords(M.words, M.caps.words || 3);
 }
 
 // Sous-titres du montage en .srt (YouTube, TikTok, Premiere…) : phrases de 42 caractères
@@ -1010,6 +1010,8 @@ function offerRestore() {
 function syncCapsUi() {
   $('#mtCapsOn').checked = M.caps.on;
   $('#mtCapStyle').value = M.caps.style;
+  $('#mtCapFont').value = M.caps.font || 'montserrat';
+  $('#mtCapWords').value = String(M.caps.words || 3);
   $('#mtCapPos').value = M.caps.pos;
   $('#mtCapSize').value = M.caps.size;
   $('#mtPunch').checked = !!M.caps.punch;
@@ -1464,6 +1466,9 @@ export function initMontage(helpers) {
   $('#mtCapsOn').addEventListener('change', e => { M.caps.on = e.target.checked; autosave(); draw(); });
   $('#mtPunch').addEventListener('change', e => { M.caps.punch = e.target.checked; autosave(); draw(); });
   $('#mtCapStyle').addEventListener('change', e => { M.caps.style = e.target.value; autosave(); draw(); });
+  $('#mtCapFont').innerHTML = Object.entries(CAPTION_FONTS).map(([k, f]) => `<option value="${k}">${f.label}</option>`).join('');
+  $('#mtCapFont').addEventListener('change', e => { M.caps.font = e.target.value; autosave(); draw(); });
+  $('#mtCapWords').addEventListener('change', e => { M.caps.words = +e.target.value; buildCaptions(); autosave(); draw(); });
   $('#mtCapPos').addEventListener('input', e => { M.caps.pos = +e.target.value; autosave(); draw(); });
   $('#mtCapSize').addEventListener('input', e => { M.caps.size = +e.target.value; autosave(); draw(); });
   $('#mtFit').addEventListener('click', () => {

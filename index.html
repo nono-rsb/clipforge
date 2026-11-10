@@ -268,6 +268,10 @@
           <button id="mtSrt" class="btn ghost sm wide" title="Fichier de sous-titres pour YouTube, TikTok ou un logiciel de montage">⬇ Sous-titres .srt</button>
           <label class="switch-row"><span class="label">Afficher</span><input type="checkbox" id="mtCapsOn" checked><span class="switch"></span></label>
           <div class="field"><div class="label">Style</div><select id="mtCapStyle"></select></div>
+          <div class="row2">
+            <select id="mtCapFont" aria-label="Police des sous-titres"></select>
+            <select id="mtCapWords" aria-label="Mots affichés à la fois"><option value="1">1 mot</option><option value="2">2 mots</option><option value="3" selected>3 mots</option><option value="4">4 mots</option></select>
+          </div>
           <div class="field"><div class="label">Position</div><input type="range" id="mtCapPos" min="0.15" max="0.92" step="0.01" value="0.82"></div>
           <div class="field"><div class="label">Taille</div><input type="range" id="mtCapSize" min="0.5" max="1.6" step="0.05" value="0.8"></div>
           <label class="switch-row" title="Petit zoom sur les mots forts, comme les créateurs pros (nécessite les sous-titres)"><span class="label">⚡ Zoom sur les mots forts</span><input type="checkbox" id="mtPunch"><span class="switch"></span></label>

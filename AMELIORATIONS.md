@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-10
+
+103. Montage : choix de la police des sous-titres (Montserrat, Anton, Bangers, Poppins) et du nombre de mots affichés à la fois (1 à 4), comme dans le Clipping ; retenus avec le projet
+
 ## 2026-11-09
 
 102. Éditeur : lecture enchaînée (bouton ⏭ ou touche C) : à la fin d'un clip, ClipForge passe tout seul au suivant et continue la lecture, pour revoir tous les clips d'affilée comme un fil TikTok ; le choix est mémorisé
