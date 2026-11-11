@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-11
+
+104. Résultats : bouton « ＋ Plus de clips » qui cherche d'autres moments dans la même vidéo sans refaire l'analyse ; il ajoute jusqu'à 4 clips qui ne recoupent pas ceux déjà là (même retouchés), ou prévient quand il n'y a plus de passage assez différent
+
 ## 2026-11-10
 
 103. Montage : choix de la police des sous-titres (Montserrat, Anton, Bangers, Poppins) et du nombre de mots affichés à la fois (1 à 4), comme dans le Clipping ; retenus avec le projet

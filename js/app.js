@@ -731,6 +731,29 @@ $('#searchText').addEventListener('keydown', e => {
 
 const escapeHtml = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 $('#newVideo').addEventListener('click', () => { show('upload'); });
+
+// Plus de clips : on reprend l'analyse déjà faite et on garde les passages suivants
+// qui ne recoupent pas les clips déjà là (même retouchés).
+function moreClips(add = 4) {
+  if (!state.energy) return;
+  const S = state.settings;
+  const [minLen, maxLen] = S.length.split('-').map(Number);
+  const overlaps = (a, b) => Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start)) > 0.15 * Math.min(a.end - a.start, b.end - b.start);
+  let fresh = [];
+  for (let count = state.clips.length + add; count <= state.clips.length + add * 6 && fresh.length < add; count += add) {
+    const found = findClips({
+      duration: state.duration, energy: state.energy, hop: HOP, words: state.words,
+      cuts: state.visual.cuts, minLen, maxLen, count, topics: S.topics.split(/[,;]+/).map(x => x.trim()).filter(Boolean),
+    });
+    fresh = found.filter(c => !state.clips.some(x => overlaps(c, x))).slice(0, add);
+  }
+  if (!fresh.length) { toast('Pas d\'autre passage assez différent dans cette vidéo.', '', 4000); return; }
+  state.clips.push(...fresh.map(c => initClip(c)));
+  persistClips();
+  renderResults();
+  toast(`＋ ${fresh.length} nouveau${fresh.length > 1 ? 'x' : ''} clip${fresh.length > 1 ? 's' : ''}`, 'ok', 3000);
+}
+$('#moreClips').addEventListener('click', () => moreClips());
 const selected = new Set();
 function updateExportAll() {
   [...selected].forEach(id => { if (!state.clips.some(c => c.id === id)) selected.delete(id); });
