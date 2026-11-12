@@ -22,7 +22,7 @@ L'import par lien (YouTube…) marche avec l'exe et avec Node.js, mais pas sur l
 
 | Fonction | Détail |
 |---|---|
-| Détection des moments forts | Sujets qui t'intéressent (favorisés), énergie de la voix, dynamique, accroche des 3 premières secondes, débit de parole, mots-clés (« secret », « pourquoi », « erreur »…), questions, rythme du montage |
+| Détection des moments forts | Durée des clips au choix (moins de 30 s, 30–60 s, 60–90 s, auto ou sur mesure), sujets qui t'intéressent (favorisés), énergie de la voix, dynamique, accroche des 3 premières secondes, débit de parole, mots-clés (« secret », « pourquoi », « erreur »…), questions, rythme du montage |
 | Score de viralité | Note de 48 à 99 pour chaque clip, avec les raisons (🔥 Démarrage fort, ❓ Accroche…) |
 | Coupes naturelles | Les clips commencent et finissent sur des fins de phrases ou des pauses |
 | Suivi des visages | Détection des visages (MediaPipe) toutes les 0,5 s sur les clips. Le cadre 9:16 reste sur la personne, reste sur le même visage s'il y en a plusieurs, et ne bouge pas pour des petits mouvements. Sans visage, il suit le mouvement |

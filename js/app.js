@@ -145,7 +145,27 @@ function bindChips(container, onPick) {
   });
 }
 
-$$('.chips[data-setting]').forEach(c => bindChips(c, v => { state.settings[c.dataset.setting] = v; }));
+$$('.chips[data-setting]').forEach(c => bindChips(c, v => {
+  if (c.dataset.setting === 'length') { $('#lenCustom').classList.toggle('hidden', v !== 'custom'); if (v === 'custom') return customLen(); }
+  state.settings[c.dataset.setting] = v;
+}));
+
+// Durée sur mesure : deux nombres de secondes, mémorisés et remis dans l'ordre s'il le faut.
+function customLen() {
+  let a = clamp(Math.round(+$('#lenMin').value || 20), 5, 170), b = clamp(Math.round(+$('#lenMax').value || 45), 10, 180);
+  if (b < a + 5) b = Math.min(180, a + 5);
+  state.settings.length = `${a}-${b}`;
+  store.set('lenCustom', state.settings.length);
+}
+{
+  const [a, b] = (store.get('lenCustom') || '20-45').split('-');
+  $('#lenMin').value = a; $('#lenMax').value = b;
+  ['#lenMin', '#lenMax'].forEach(id => $(id).addEventListener('change', () => {
+    customLen();
+    const [x, y] = state.settings.length.split('-');
+    $('#lenMin').value = x; $('#lenMax').value = y;
+  }));
+}
 $('#count').addEventListener('input', e => { state.settings.count = +e.target.value; $('#countVal').textContent = e.target.value; });
 $('#transcribe').addEventListener('change', e => { state.settings.transcribe = e.target.checked; $('#asrOpts').style.opacity = e.target.checked ? 1 : 0.4; });
 $('#faces').addEventListener('change', e => { state.settings.faces = e.target.checked; });

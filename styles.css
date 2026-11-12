@@ -449,3 +449,7 @@ body:has(#screen-montage.active) .site-foot { display: none; }
 .ed-nav { display: flex; align-items: center; gap: 4px; }
 .ed-nav .mono { min-width: 3.2em; text-align: center; font-size: 13px; }
 .ed-nav .btn:disabled { opacity: .35; cursor: default; }
+
+/* Durée des clips sur mesure */
+.len-custom { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: var(--muted); }
+.len-custom input { width: 72px; }
