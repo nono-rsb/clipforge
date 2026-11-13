@@ -1478,6 +1478,44 @@ export function initMontage(helpers) {
     draw();
   });
   $('#mtZoom').addEventListener('input', e => { M.zoom = +e.target.value; render(); draw(); });
+  // Zoom de la timeline autour d'un point (le temps sous le curseur ou entre les doigts ne bouge pas).
+  const tl = $('#mtTimeline');
+  const zoomAt = (z, clientX) => {
+    const x = clientX - tl.getBoundingClientRect().left, t = (tl.scrollLeft + x) / M.zoom;
+    M.zoom = clamp(z, 2, 200);
+    $('#mtZoom').value = M.zoom;
+    render();
+    draw();
+    tl.scrollLeft = t * M.zoom - x;
+  };
+  // Ctrl + molette (et pincement du pavé tactile, vu comme Ctrl + molette par le navigateur).
+  tl.addEventListener('wheel', e => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    zoomAt(M.zoom * Math.exp(-e.deltaY * 0.0025), e.clientX);
+  }, { passive: false });
+  // Pincement à deux doigts sur téléphone et tablette.
+  const touches = new Map();
+  let pinch = null;
+  tl.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'touch') return;
+    touches.set(e.pointerId, e.clientX);
+    if (touches.size === 2) {
+      const [a, b] = [...touches.values()];
+      pinch = { d: Math.abs(a - b) || 1, z: M.zoom };
+    }
+  }, true);
+  tl.addEventListener('pointermove', e => {
+    if (!touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, e.clientX);
+    if (!pinch || touches.size !== 2) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const [a, b] = [...touches.values()];
+    zoomAt(pinch.z * Math.max(1, Math.abs(a - b)) / pinch.d, (a + b) / 2);
+  }, true);
+  const lift = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; };
+  ['pointerup', 'pointercancel'].forEach(ev => tl.addEventListener(ev, lift, true));
   $('#mtSilThr').addEventListener('input', e => { $('#mtSilThrV').textContent = `${Math.round(e.target.value * 100)} %`; });
   $('#mtSilMin').addEventListener('input', e => { $('#mtSilMinV').textContent = `${(+e.target.value).toFixed(1)} s`; });
   $('#mtAspect').addEventListener('click', e => {

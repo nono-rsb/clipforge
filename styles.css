@@ -270,7 +270,7 @@ kbd { background: var(--panel2); border: 1px solid var(--line); border-bottom-wi
 .mt-tools { display: flex; gap: 6px; flex: 1; justify-content: center; flex-wrap: wrap; }
 .mt-zoom { display: flex; align-items: center; gap: 10px; font-size: 12px; }
 .mt-zoom input { max-width: 220px; }
-.mt-timeline { background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; overflow-x: auto; overflow-y: hidden; }
+.mt-timeline { background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; overflow-x: auto; overflow-y: hidden; touch-action: pan-x pan-y; }
 .mt-inner { position: relative; min-height: 150px; padding-bottom: 8px; cursor: text; }
 .mt-ruler { position: relative; height: 24px; border-bottom: 1px solid var(--line); }
 .mt-ruler span { position: absolute; top: 4px; font-size: 10.5px; color: var(--muted); padding-left: 4px; border-left: 1px solid #ffffff22; height: 16px; font-variant-numeric: tabular-nums; }

@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-13
+
+106. Montage : zoom de la timeline avec Ctrl + molette (ou en pinçant le pavé tactile) et en pinçant à deux doigts sur téléphone et tablette, centré sur l'endroit visé, comme dans les logiciels de montage
+
 ## 2026-11-12
 
 105. Durée des clips « Sur mesure » : en plus des choix tout faits, on peut donner sa propre durée minimum et maximum (de 5 s à 3 min), remise dans l'ordre si besoin et mémorisée
