@@ -3,7 +3,7 @@ import {
   buildWords, findClips, fmtTime, seekTo, clamp, norm, isKeyword, parseFixes, fixWords,
 } from './analyzer.js';
 import { loadFaceDetector, detectFaces } from './faces.js';
-import { renderFrame, groupWords, CAPTION_STYLES, CAPTION_FONTS, FILTERS, isSwear } from './renderer.js';
+import { renderFrame, groupWords, CAPTION_STYLES, CAPTION_FONTS, FILTERS, isSwear, manualX } from './renderer.js';
 import { exportClip, outputSize } from './exporter.js';
 import { fastAvailable, openSource, keyframePlan, keyframes, fileDuration } from './fastexport.js';
 import { transcribePcm } from './transcribe.js';
@@ -1122,7 +1122,8 @@ function syncEditor() {
   $$('.chips[data-opt]').forEach(ch => ch.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === o[ch.dataset.opt])));
   $$('[data-bool]').forEach(i => { i.checked = !!o[i.dataset.bool]; });
   $$('#styleGrid button').forEach(b => b.classList.toggle('on', b.dataset.style === o.capStyle));
-  $('#cropX').value = o.cropX;
+  $('#cropX').value = manualX(o, video.currentTime);
+  syncKeys();
   $('#cropXField').style.display = o.reframe === 'manual' ? '' : 'none';
   const share = env.track.duo?.share(c.start, c.end) || 0;
   $('#podcastHint').textContent = o.reframe !== 'auto' || o.layout !== 'fill'
@@ -1236,6 +1237,7 @@ function loop() {
     video.currentTime = c.start;
   }
   renderFrame(pctx, video, c, video.currentTime, env);
+  if (c.opts.cropKeys?.length && document.activeElement !== $('#cropX')) $('#cropX').value = manualX(c.opts, video.currentTime);
   if (showZones && c.opts.aspect === '9:16') drawZones(pctx, c);
   const rel = (video.currentTime - c.start) / (c.opts.speed || 1);
   syncMusic();
@@ -1282,14 +1284,13 @@ pv.addEventListener('pointerdown', e => {
       const share = visibleShare(c.opts);
       dragging = Math.abs(dx) > Math.abs(dy) && share < 0.99 ? 'frame' : 'caption';
       if (dragging === 'frame') {
-        cx0 = c.opts.reframe === 'auto' ? env.track.x(video.currentTime) : c.opts.cropX;
+        cx0 = c.opts.reframe === 'auto' ? env.track.x(video.currentTime) : manualX(c.opts, video.currentTime);
         if (c.opts.reframe === 'auto') { c.opts.reframe = 'manual'; syncEditor(); }
       }
     }
     if (dragging === 'frame') {
       const share = visibleShare(c.opts);
-      c.opts.cropX = clamp(cx0 - (dx / r.width) * share, share / 2, 1 - share / 2);
-      $('#cropX').value = c.opts.cropX;
+      setCropX(clamp(cx0 - (dx / r.width) * share, share / 2, 1 - share / 2));
     } else {
       c.opts.capPos = clamp((ev.clientY - r.top) / r.height, 0.12, 0.92);
       $('#capPos').value = c.opts.capPos;
@@ -1364,7 +1365,42 @@ $('#capColorReset').addEventListener('click', () => { state.editing.opts.capColo
 $('#watermark').addEventListener('input', e => { state.editing.opts.watermark = e.target.value; store.set('watermark', e.target.value); });
 
 const numOpt = (id, key, after) => $(id).addEventListener('input', e => { state.editing.opts[key] = +e.target.value; after?.(); });
-numOpt('#cropX', 'cropX');
+$('#cropX').addEventListener('input', e => setCropX(+e.target.value));
+
+// Recadrage manuel : en mode animé, chaque réglage pose (ou déplace) un point clé à l'instant affiché.
+function setCropX(x) {
+  const o = state.editing.opts;
+  o.cropX = x;
+  if (o.cropKeys?.length) {
+    const t = video.currentTime, near = o.cropKeys.find(k => Math.abs(k.t - t) < 0.25);
+    if (near) near.x = x; else o.cropKeys = [...o.cropKeys, { t, x }].sort((a, b) => a.t - b.t);
+    syncKeys();
+  }
+  $('#cropX').value = x;
+}
+function syncKeys() {
+  const o = state.editing.opts, n = o.cropKeys?.length || 0;
+  $('#cropAnim').checked = n > 0;
+  $('#cropKeysInfo').classList.toggle('hidden', !n);
+  $('#cropKeysN').textContent = `${n} point${n > 1 ? 's' : ''} de cadrage`;
+}
+$('#cropAnim').addEventListener('change', e => {
+  remember();
+  const o = state.editing.opts;
+  // Activé : premier point à l'instant affiché. Désactivé : on garde la position du moment.
+  if (e.target.checked) o.cropKeys = [{ t: video.currentTime, x: o.cropX }];
+  else { o.cropX = manualX(o, video.currentTime); o.cropKeys = []; }
+  syncKeys();
+});
+$('#cropKeyDel').addEventListener('click', () => {
+  remember();
+  const o = state.editing.opts, t = video.currentTime;
+  if (!o.cropKeys?.length) return;
+  const i = o.cropKeys.reduce((b, k, j) => (Math.abs(k.t - t) < Math.abs(o.cropKeys[b].t - t) ? j : b), 0);
+  o.cropKeys = o.cropKeys.filter((_, j) => j !== i);
+  if (!o.cropKeys.length) o.cropX = manualX({ ...o, cropKeys: [] }, t);
+  syncKeys();
+});
 numOpt('#zoom', 'zoom', () => { $('#zoomVal').textContent = `${state.editing.opts.zoom.toFixed(2)}×`; });
 numOpt('#capSize', 'capSize');
 numOpt('#capPos', 'capPos');

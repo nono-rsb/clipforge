@@ -78,6 +78,20 @@ const bgx = bg.getContext('2d');
 // Sous-titres seuls, réutilisés par l'onglet Montage.
 export function drawCaptionLayer(ctx, groups, t, o, W, H) { drawCaptions(ctx, groups, t, o, W, H); }
 
+// Recadrage manuel : position fixe, ou animée entre des points clés (glissement doux de l'un à l'autre).
+export function manualX(o, t) {
+  const k = o.cropKeys;
+  if (!k?.length) return o.cropX;
+  if (t <= k[0].t) return k[0].x;
+  for (let i = 1; i < k.length; i++) {
+    if (t <= k[i].t) {
+      const u = (t - k[i - 1].t) / (k[i].t - k[i - 1].t || 1), e = u * u * (3 - 2 * u);
+      return k[i - 1].x + (k[i].x - k[i - 1].x) * e;
+    }
+  }
+  return k[k.length - 1].x;
+}
+
 export function renderFrame(ctx, video, clip, t, env) {
   const { width: W, height: H } = ctx.canvas;
   let o = clip.opts;
@@ -99,7 +113,7 @@ export function renderFrame(ctx, video, clip, t, env) {
       const s = duo.seat(duo.speaker(t), t);
       drawFill(ctx, video, vw, vh, W, H, o.zoom * faceZoom(s, vw, vh, W, H), s.x, clamp(s.y + 0.1 / o.zoom, 0, 1));
     } else {
-      const cx = auto ? env.track.x(t) : o.cropX;
+      const cx = auto ? env.track.x(t) : manualX(o, t);
       // Le visage est placé un peu au-dessus du centre (règle des tiers).
       const cy = auto ? clamp(env.track.y(t) + 0.1 / o.zoom, 0, 1) : 0.45;
       if (o.layout === 'fit') drawFit(ctx, video, vw, vh, W, H, o, cx);

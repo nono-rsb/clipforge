@@ -427,6 +427,11 @@
           <div class="field" id="cropXField">
             <div class="label">Position horizontale <small class="muted">· ou glisse l'image</small></div>
             <input type="range" id="cropX" min="0" max="1" step="0.01">
+            <label class="switch-row">
+              <span><span class="label">Cadrage animé</span><small>Chaque réglage pose un point à l'instant affiché ; le cadre glisse d'un point à l'autre</small></span>
+              <input type="checkbox" id="cropAnim"><span class="switch"></span>
+            </label>
+            <div id="cropKeysInfo" class="btn-row hidden"><span id="cropKeysN" class="muted small"></span><button id="cropKeyDel" class="btn ghost sm" type="button">⌫ Retirer le point le plus proche</button></div>
           </div>
           <div class="field">
             <div class="label">Zoom <b id="zoomVal"></b></div>

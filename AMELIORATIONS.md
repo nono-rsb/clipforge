@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-14
+
+107. Cadrage animé : en recadrage manuel, l'option « Cadrage animé » pose un point clé à chaque réglage (curseur ou image glissée) à l'instant affiché, et le cadre glisse en douceur d'un point à l'autre pendant le clip (pour suivre quelqu'un qui bouge ou passer d'une personne à l'autre) ; bouton pour retirer le point le plus proche, Ctrl+Z, inclus dans l'export
+
 ## 2026-11-13
 
 106. Montage : zoom de la timeline avec Ctrl + molette (ou en pinçant le pavé tactile) et en pinçant à deux doigts sur téléphone et tablette, centré sur l'endroit visé, comme dans les logiciels de montage
