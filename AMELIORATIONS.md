@@ -2,6 +2,10 @@
 
 Les plus récentes en haut. Sert aussi à la tâche quotidienne pour ne pas refaire deux fois la même chose.
 
+## 2026-11-15
+
+108. Montage par le texte : une fois les sous-titres générés, le texte du montage s'affiche mot par mot ; un clic sur un mot y amène la tête de lecture, Maj + clic choisit un passage et « ✂ Couper les mots choisis » le retire de la vidéo (les textes et musiques placés après reculent d'autant) ; le mot en cours est surligné pendant la lecture ; Ctrl+Z annule
+
 ## 2026-11-14
 
 107. Cadrage animé : en recadrage manuel, l'option « Cadrage animé » pose un point clé à chaque réglage (curseur ou image glissée) à l'instant affiché, et le cadre glisse en douceur d'un point à l'autre pendant le clip (pour suivre quelqu'un qui bouge ou passer d'une personne à l'autre) ; bouton pour retirer le point le plus proche, Ctrl+Z, inclus dans l'export

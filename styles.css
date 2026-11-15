@@ -453,3 +453,10 @@ body:has(#screen-montage.active) .site-foot { display: none; }
 /* Durée des clips sur mesure */
 .len-custom { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: var(--muted); }
 .len-custom input { width: 72px; }
+
+/* Montage par le texte */
+.mt-transcript { max-height: 200px; overflow-y: auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); font-size: 14px; line-height: 1.7; margin-bottom: 8px; }
+.mt-transcript span { cursor: pointer; border-radius: 4px; padding: 0 1px; }
+.mt-transcript span:hover { background: #ffffff18; }
+.mt-transcript span.cur { color: var(--accent2); font-weight: 700; }
+.mt-transcript span.sel { background: #ff4fd855; text-decoration: line-through; }

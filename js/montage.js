@@ -436,6 +436,7 @@ function draw(src) {
   }
   M.texts.forEach(tx => { if (M.t >= tx.t && M.t <= tx.t + tx.dur) drawText(tx, W, H); });
   if (src) return;
+  markWord();
   $('#mtCur').textContent = fmtTime(M.t);
   $('#mtTotal').textContent = fmtTime(total());
   const ph = $('#mtPlayhead');
@@ -542,6 +543,61 @@ function split() {
   M.sel = { kind: 'seg', id: right.id };
   render();
   seek(M.t);
+}
+
+// Retire un passage de la timeline (temps du montage) : les segments touchés sont raccourcis
+// ou coupés en deux, et les textes et musiques placés après reculent d'autant.
+function cutRange(T0, T1) {
+  if (!(T1 > T0)) return;
+  snapshot();
+  const out = [];
+  let st = 0;
+  for (const s of M.segs) {
+    const d = segDur(s), en = st + d;
+    if (en <= T0 || st >= T1) out.push(s);
+    else {
+      const sa = s.a + (Math.max(T0, st) - st) * s.speed, sb = s.a + (Math.min(T1, en) - st) * s.speed;
+      if (sa - s.a > 0.05) out.push({ ...s, b: sa });
+      if (s.b - sb > 0.05) out.push({ ...s, id: id('s'), a: sb, trans: sa - s.a > 0.05 ? 'none' : s.trans });
+    }
+    st = en;
+  }
+  M.segs = out;
+  const cut = T1 - T0;
+  [...M.texts, ...M.tracks].forEach(x => { if (x.t >= T1) x.t -= cut; else if (x.t > T0) x.t = T0; });
+  M.sel = null;
+  txtSel = null;
+  render();
+  seek(Math.min(T0, total()));
+  ui.toast(`✂ Passage de ${fmtTime(cut)} coupé`, 'ok', 2500);
+}
+
+// Montage par le texte : la transcription du montage, mot par mot.
+let txtSel = null, txtKey = null, txtCur = -1;
+function renderTranscript() {
+  const box = $('#mtTranscript'), words = M.words || [];
+  if (txtSel && txtSel[1] >= words.length) txtSel = null;
+  $('#mtTxtHint').classList.toggle('hidden', words.length > 0);
+  box.classList.toggle('hidden', !words.length);
+  $('#mtCutWords').disabled = !txtSel;
+  const key = `${words.length}:${words[0]?.s}:${words.at(-1)?.e}:${txtSel}`;
+  if (key === txtKey) return;
+  txtKey = key;
+  txtCur = -1;
+  const [i0, i1] = txtSel || [-1, -2];
+  box.innerHTML = words.map((w, i) => `<span data-i="${i}"${i >= i0 && i <= i1 ? ' class="sel"' : ''}>${w.w.replace(/[<>&]/g, '')}</span>`).join(' ');
+}
+// Mot en cours pendant la lecture, sans tout redessiner.
+function markWord() {
+  const words = M.words || [];
+  if (!words.length) return;
+  let i = words.findIndex(w => M.t < w.e);
+  if (i >= 0 && M.t < words[i].s) i = -1;
+  if (i === txtCur) return;
+  $('#mtTranscript').querySelector('.cur')?.classList.remove('cur');
+  txtCur = i;
+  const el = i >= 0 && $('#mtTranscript').querySelector(`[data-i="${i}"]`);
+  if (el) { el.classList.add('cur'); if (M.playing) el.scrollIntoView({ block: 'nearest' }); }
 }
 
 function remove() {
@@ -1019,6 +1075,7 @@ function syncCapsUi() {
 
 function render() {
   buildCaptions();
+  renderTranscript();
   autosave();
   $('#mtEmpty').classList.toggle('hidden', M.media.length > 0);
   // Bibliothèque
@@ -1464,6 +1521,17 @@ export function initMontage(helpers) {
   $('#mtTranscribe').addEventListener('click', transcribeAll);
   $('#mtCapStyle').innerHTML = Object.entries(CAPTION_STYLES).map(([k, st]) => `<option value="${k}">${st.label}</option>`).join('');
   $('#mtCapsOn').addEventListener('change', e => { M.caps.on = e.target.checked; autosave(); draw(); });
+  $('#mtTranscript').addEventListener('click', e => {
+    const i = +e.target.dataset?.i;
+    if (Number.isNaN(i)) return;
+    txtSel = e.shiftKey && txtSel ? [Math.min(txtSel[0], i), Math.max(txtSel[1], i)] : [i, i];
+    renderTranscript();
+    seek(M.words[i].s);
+  });
+  $('#mtCutWords').addEventListener('click', () => {
+    if (!txtSel) return;
+    cutRange(Math.max(0, M.words[txtSel[0]].s - 0.05), Math.min(total(), M.words[txtSel[1]].e + 0.05));
+  });
   $('#mtPunch').addEventListener('change', e => { M.caps.punch = e.target.checked; autosave(); draw(); });
   $('#mtCapStyle').addEventListener('change', e => { M.caps.style = e.target.value; autosave(); draw(); });
   $('#mtCapFont').innerHTML = Object.entries(CAPTION_FONTS).map(([k, f]) => `<option value="${k}">${f.label}</option>`).join('');
